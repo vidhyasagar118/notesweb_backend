@@ -103,9 +103,10 @@ router.get("/shared/:groupCode", auth, async (req, res) => {
 
         grouped[f.subject].push(f);
     });
-
     res.json({
         owner: user.name,
         grouped
     });
 });
+
+module.exports = router;
