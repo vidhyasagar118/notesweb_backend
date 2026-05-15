@@ -8,29 +8,28 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors({
-    origin: "*"
-}));
+const authRoutes = require("./routes/authRoutes");
+const fileRoutes = require("./routes/fileRoutes");
+
+app.use(cors());
 
 app.use(express.json());
 
-app.use("/uploads",
+app.use(
+    "/uploads",
     express.static(path.join(__dirname, "uploads"))
 );
 
-app.use("/api/auth",
-    require("./routes/authRoutes")
-);
+app.use("/api/auth", authRoutes);
 
-app.use("/api/files",
-    require("./routes/fileRoutes")
-);
+app.use("/api/files", fileRoutes);
 
 app.get("/", (req, res) => {
     res.send("Backend Running 🚀");
 });
 
 mongoose.connect(process.env.MONGO_URI)
+
 .then(() => {
 
     console.log("MongoDB Connected");
@@ -40,4 +39,7 @@ mongoose.connect(process.env.MONGO_URI)
     });
 
 })
-.catch(err => console.log(err));
+
+.catch((err) => {
+    console.log(err);
+});
