@@ -54,18 +54,58 @@ router.get("/myfiles", auth, async (req, res) => {
 
     res.json(grouped);
 });
-
 router.delete("/:id", auth, async (req, res) => {
 
     const file = await File.findById(req.params.id);
 
-    if (!file) return res.status(404).json({ message: "Not found" });
+    if (!file) {
+        return res.status(404).json({ message: "Not found" });
+    }
 
-    fs.unlinkSync(file.filepath);
+    // OWNER CHECK
+    if (file.userId.toString() !== req.user.id) {
+        return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    if (fs.existsSync(file.filepath)) {
+        fs.unlinkSync(file.filepath);
+    }
 
     await File.findByIdAndDelete(req.params.id);
 
     res.json({ message: "Deleted" });
 });
 
-module.exports = router;
+
+router.get("/shared/:groupCode", auth, async (req, res) => {
+
+    const user = await User.findOne({
+        groupCode: req.params.groupCode
+    });
+
+    if (!user) {
+        return res.status(404).json({
+            message: "Group not found"
+        });
+    }
+
+    const files = await File.find({
+        userId: user._id
+    });
+
+    const grouped = {};
+
+    files.forEach(f => {
+
+        if (!grouped[f.subject]) {
+            grouped[f.subject] = [];
+        }
+
+        grouped[f.subject].push(f);
+    });
+
+    res.json({
+        owner: user.name,
+        grouped
+    });
+});
