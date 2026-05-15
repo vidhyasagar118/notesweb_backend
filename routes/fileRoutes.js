@@ -81,4 +81,40 @@ router.get("/shared/:groupCode", auth, async (req, res) => {
     });
 });
 
+router.delete("/:id", auth, async (req, res) => {
+
+    try {
+
+        const file = await File.findById(req.params.id);
+
+        if (!file) {
+            return res.status(404).json({
+                message: "File not found"
+            });
+        }
+
+        // only owner can delete
+        if (file.userId.toString() !== req.user.id) {
+            return res.status(403).json({
+                message: "Unauthorized"
+            });
+        }
+
+        // delete physical file
+        fs.unlinkSync(file.filepath);
+
+        // delete from mongodb
+        await File.findByIdAndDelete(req.params.id);
+
+        res.json({
+            message: "File deleted"
+        });
+
+    } catch (err) {
+
+        res.status(500).json({
+            message: "Delete failed"
+        });
+    }
+});
 module.exports = router;
