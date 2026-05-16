@@ -1,43 +1,40 @@
 const router = require("express").Router();
-
 const multer = require("multer");
-
 const fs = require("fs");
 
 const auth = require("../middleware/authMiddleware");
-
 const File = require("../models/File");
-
 const User = require("../models/User");
-
 const cloudinary = require("../config/cloudinary");
 
-
-
-// TEMP STORAGE
-
+// MULTER
 const upload = multer({
-    dest: "/tmp/"
+    dest: "temp/",
+    limits: {
+        fileSize: 20 * 1024 * 1024 // 20MB
+    }
 });
 
-
-
 // UPLOAD FILES
-
 router.post(
     "/upload",
     auth,
     upload.array("files", 20),
-
     async (req, res) => {
 
         try {
+
+            if (!req.files || req.files.length === 0) {
+                return res.status(400).json({
+                    message: "No files uploaded"
+                });
+            }
 
             const savedFiles = [];
 
             for (const file of req.files) {
 
-                // Upload to cloudinary
+                console.log("Uploading:", file.originalname);
 
                 const result = await cloudinary.uploader.upload(
                     file.path,
@@ -46,8 +43,6 @@ router.post(
                         folder: `notesweb/${req.user.id}/${req.body.subject}`
                     }
                 );
-
-                // Save DB
 
                 const newFile = await File.create({
 
@@ -66,8 +61,7 @@ router.post(
 
                 savedFiles.push(newFile);
 
-                // delete temp file
-
+                // DELETE TEMP FILE
                 fs.unlinkSync(file.path);
             }
 
@@ -75,19 +69,18 @@ router.post(
 
         } catch (err) {
 
+            console.log("UPLOAD ERROR:");
             console.log(err);
 
             res.status(500).json({
-                message: "Upload failed"
+                message: "Upload failed",
+                error: err.message
             });
         }
     }
 );
 
-
-
 // MY FILES
-
 router.get("/myfiles", auth, async (req, res) => {
 
     try {
@@ -123,10 +116,7 @@ router.get("/myfiles", auth, async (req, res) => {
     }
 });
 
-
-
 // DELETE FILE
-
 router.delete("/:id", auth, async (req, res) => {
 
     try {
@@ -168,45 +158,53 @@ router.delete("/:id", auth, async (req, res) => {
     }
 });
 
-
-
 // SHARED FILES
-
 router.get("/shared/:groupCode", auth, async (req, res) => {
 
-    const user = await User.findOne({
-        groupCode: req.params.groupCode
-    });
+    try {
 
-    if (!user) {
-        return res.status(404).json({
-            message: "Group not found"
+        const user = await User.findOne({
+            groupCode: req.params.groupCode
+        });
+
+        if (!user) {
+            return res.status(404).json({
+                message: "Group not found"
+            });
+        }
+
+        const files = await File.find({
+            userId: user._id
+        });
+
+        const grouped = {};
+
+        files.forEach(file => {
+
+            if (!grouped[file.semester]) {
+                grouped[file.semester] = {};
+            }
+
+            if (!grouped[file.semester][file.subject]) {
+                grouped[file.semester][file.subject] = [];
+            }
+
+            grouped[file.semester][file.subject].push(file);
+        });
+
+        res.json({
+            owner: user.name,
+            grouped
+        });
+
+    } catch (err) {
+
+        console.log(err);
+
+        res.status(500).json({
+            message: "Server Error"
         });
     }
-
-    const files = await File.find({
-        userId: user._id
-    });
-
-    const grouped = {};
-
-    files.forEach(file => {
-
-        if (!grouped[file.semester]) {
-            grouped[file.semester] = {};
-        }
-
-        if (!grouped[file.semester][file.subject]) {
-            grouped[file.semester][file.subject] = [];
-        }
-
-        grouped[file.semester][file.subject].push(file);
-    });
-
-    res.json({
-        owner: user.name,
-        grouped
-    });
 });
 
 module.exports = router;

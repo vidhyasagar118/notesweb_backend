@@ -21,6 +21,9 @@ app.use("/api/files", fileRoutes);
 app.get("/", (req, res) => {
     res.send("Backend Running 🚀");
 });
+const cloudinary = require("./config/cloudinary");
+
+console.log(cloudinary.config());
 
 mongoose.connect(process.env.MONGO_URI)
 
