@@ -26,21 +26,38 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+router.post(
+    "/upload",
+    auth,
+    upload.array("files", 20),
+    async (req, res) => {
 
-router.post("/upload", auth, upload.single("file"), async (req, res) => {
+        try {
 
-    const newFile = await File.create({
-        userId: req.user.id,
-        subject: req.body.subject,
-        filename: req.file.filename,
+            const savedFiles = [];
 
-        // 🔥 CRITICAL FIX
-        filepath: req.file.path.replace(/\\/g, "/")
-    });
+            for (const file of req.files) {
 
-    res.json(newFile);
-});
+                const newFile = await File.create({
+                    userId: req.user.id,
+                    subject: req.body.subject,
+                    filename: file.filename,
+                    filepath: file.path.replace(/\\/g, "/")
+                });
 
+                savedFiles.push(newFile);
+            }
+
+            res.json(savedFiles);
+
+        } catch (err) {
+            console.log(err);
+            res.status(500).json({
+                message: "Upload failed"
+            });
+        }
+    }
+);
 router.get("/myfiles", auth, async (req, res) => {
 
     const files = await File.find({ userId: req.user.id });
