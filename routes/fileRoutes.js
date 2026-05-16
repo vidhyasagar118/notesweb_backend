@@ -71,7 +71,6 @@ router.post(
 
                 // ===== ORIGINAL FILE OPEN =====
 
-                const viewUrl = result.secure_url;
 
                 // ===== FORCE DOWNLOAD =====
 
