@@ -42,6 +42,7 @@ router.post(
                     userId: req.user.id,
                     subject: req.body.subject,
                     filename: file.filename,
+                    semester: req.body.semester,
                     filepath: file.path.replace(/\\/g, "/")
                 });
 
@@ -60,16 +61,39 @@ router.post(
 );
 router.get("/myfiles", auth, async (req, res) => {
 
-    const files = await File.find({ userId: req.user.id });
+    try {
 
-    const grouped = {};
+        const files = await File.find({
+            userId: req.user.id
+        });
 
-    files.forEach(f => {
-        if (!grouped[f.subject]) grouped[f.subject] = [];
-        grouped[f.subject].push(f);
-    });
+        const grouped = {};
 
-    res.json(grouped);
+        files.forEach(file => {
+
+            // Semester create
+            if (!grouped[file.semester]) {
+                grouped[file.semester] = {};
+            }
+
+            // Subject create
+            if (!grouped[file.semester][file.subject]) {
+                grouped[file.semester][file.subject] = [];
+            }
+
+            grouped[file.semester][file.subject].push(file);
+        });
+
+        res.json(grouped);
+
+    } catch (err) {
+
+        console.log(err);
+
+        res.status(500).json({
+            message: "Server Error"
+        });
+    }
 });
 router.delete("/:id", auth, async (req, res) => {
 
@@ -112,14 +136,20 @@ router.get("/shared/:groupCode", auth, async (req, res) => {
 
     const grouped = {};
 
-    files.forEach(f => {
+files.forEach(file => {
 
-        if (!grouped[f.subject]) {
-            grouped[f.subject] = [];
-        }
+    // semester create
+    if (!grouped[file.semester]) {
+        grouped[file.semester] = {};
+    }
 
-        grouped[f.subject].push(f);
-    });
+    // subject create
+    if (!grouped[file.semester][file.subject]) {
+        grouped[file.semester][file.subject] = [];
+    }
+
+    grouped[file.semester][file.subject].push(file);
+});
     res.json({
         owner: user.name,
         grouped
