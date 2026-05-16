@@ -36,14 +36,29 @@ router.post(
 
                 console.log("Uploading:", file.originalname);
 
+                // FILE EXTENSION
+                const ext = file.originalname.split(".").pop();
+
+                // CLOUDINARY UPLOAD
                 const result = await cloudinary.uploader.upload(
                     file.path,
                     {
                         resource_type: "raw",
-                        folder: `notesweb/${req.user.id}/${req.body.subject}`
+                        folder: `notesweb/${req.user.id}/${req.body.subject}`,
+                        public_id: `${Date.now()}-${file.originalname}`,
+                        format: ext
                     }
                 );
 
+                // DOWNLOAD URL
+                const downloadUrl =
+                    `https://res.cloudinary.com/${process.env.CLOUD_NAME}/raw/upload/fl_attachment/${result.public_id}.${ext}`;
+
+                // VIEW URL
+                const viewUrl =
+                    `https://res.cloudinary.com/${process.env.CLOUD_NAME}/raw/upload/${result.public_id}.${ext}`;
+
+                // SAVE DATABASE
                 const newFile = await File.create({
 
                     userId: req.user.id,
@@ -54,9 +69,11 @@ router.post(
 
                     filename: file.originalname,
 
-                    filepath: result.secure_url,
+                    filepath: viewUrl,
 
-                    publicId: result.public_id
+                    publicId: result.public_id,
+
+                    downloadUrl
                 });
 
                 savedFiles.push(newFile);
@@ -135,6 +152,7 @@ router.delete("/:id", auth, async (req, res) => {
             });
         }
 
+        // DELETE FROM CLOUDINARY
         await cloudinary.uploader.destroy(
             file.publicId,
             {
@@ -142,6 +160,7 @@ router.delete("/:id", auth, async (req, res) => {
             }
         );
 
+        // DELETE FROM DB
         await File.findByIdAndDelete(req.params.id);
 
         res.json({
@@ -153,7 +172,8 @@ router.delete("/:id", auth, async (req, res) => {
         console.log(err);
 
         res.status(500).json({
-            message: "Delete failed"
+            message: "Delete failed",
+            error: err.message
         });
     }
 });
