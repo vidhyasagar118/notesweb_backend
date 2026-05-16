@@ -41,22 +41,29 @@ router.post(
                 console.log("Uploading:", file.originalname);
 
                 // ===== UPLOAD TO CLOUDINARY =====
-
                 const result = await cloudinary.uploader.upload(
                     file.path,
                     {
-                        resource_type: "auto",
+                        resource_type: "raw",
 
                         folder: `notesweb/${req.user.id}/${req.body.subject}`,
 
                         use_filename: true,
 
-                        unique_filename: true,
-
-                        access_mode: "public"
+                        unique_filename: true
                     }
                 );
 
+                // REMOVE TEMP FILE
+                if (fs.existsSync(file.path)) {
+                    fs.unlinkSync(file.path);
+                }
+
+                // ORIGINAL FILE URL
+                const viewUrl = result.secure_url;
+
+                // DOWNLOAD URL
+                const downloadUrl = result.secure_url + "?download=true";
                 // ===== REMOVE TEMP FILE =====
 
                 if (fs.existsSync(file.path)) {
