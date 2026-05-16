@@ -12,8 +12,7 @@ const cloudinary = require("../config/cloudinary");
 const upload = multer({
     dest: "temp/",
     limits: {
-        fileSize: 20 * 1024 * 1024
-    }
+fileSize: 50 * 1024 * 1024    }
 });
 
 // ================= UPLOAD FILES =================
