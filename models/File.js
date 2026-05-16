@@ -15,6 +15,8 @@ const fileSchema = new mongoose.Schema({
 
     filepath: String,
 
+    downloadUrl: String,
+
     publicId: String,
 
     uploadedAt: {
