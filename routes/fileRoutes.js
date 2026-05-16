@@ -7,7 +7,8 @@ const File = require("../models/File");
 const User = require("../models/User");
 const cloudinary = require("../config/cloudinary");
 
-// MULTER
+// ================= MULTER =================
+
 const upload = multer({
     dest: "temp/",
     limits: {
@@ -15,7 +16,8 @@ const upload = multer({
     }
 });
 
-// UPLOAD FILES
+// ================= UPLOAD FILES =================
+
 router.post(
     "/upload",
     auth,
@@ -38,27 +40,42 @@ router.post(
 
                 console.log("Uploading:", file.originalname);
 
+                // ===== UPLOAD TO CLOUDINARY =====
+
                 const result = await cloudinary.uploader.upload(
                     file.path,
                     {
-                        resource_type: "raw",
+                        resource_type: "auto",
+
                         folder: `notesweb/${req.user.id}/${req.body.subject}`,
+
                         use_filename: true,
-                        unique_filename: true
+
+                        unique_filename: true,
+
+                        access_mode: "public"
                     }
                 );
 
-                // VIEW URL
+                // ===== REMOVE TEMP FILE =====
+
+                if (fs.existsSync(file.path)) {
+                    fs.unlinkSync(file.path);
+                }
+
+                // ===== ORIGINAL FILE OPEN =====
+
                 const viewUrl = result.secure_url;
 
-                // DOWNLOAD URL
-                const downloadUrl =
-                    result.secure_url.replace(
-                        "/upload/",
-                        "/upload/fl_attachment/"
-                    );
+                // ===== FORCE DOWNLOAD =====
 
-                // SAVE DATABASE
+                const downloadUrl = result.secure_url.replace(
+                    "/upload/",
+                    "/upload/fl_attachment/"
+                );
+
+                // ===== SAVE DB =====
+
                 const newFile = await File.create({
 
                     userId: req.user.id,
@@ -77,9 +94,6 @@ router.post(
                 });
 
                 savedFiles.push(newFile);
-
-                // DELETE TEMP FILE
-                fs.unlinkSync(file.path);
             }
 
             res.json(savedFiles);
@@ -89,6 +103,18 @@ router.post(
             console.log("UPLOAD ERROR:");
             console.log(err);
 
+            // ===== CLEAN TEMP FILES =====
+
+            if (req.files) {
+
+                req.files.forEach(file => {
+
+                    if (fs.existsSync(file.path)) {
+                        fs.unlinkSync(file.path);
+                    }
+                });
+            }
+
             res.status(500).json({
                 message: "Upload failed",
                 error: err.message
@@ -97,7 +123,8 @@ router.post(
     }
 );
 
-// MY FILES
+// ================= MY FILES =================
+
 router.get("/myfiles", auth, async (req, res) => {
 
     try {
@@ -133,7 +160,8 @@ router.get("/myfiles", auth, async (req, res) => {
     }
 });
 
-// DELETE FILE
+// ================= DELETE FILE =================
+
 router.delete("/:id", auth, async (req, res) => {
 
     try {
@@ -143,7 +171,7 @@ router.delete("/:id", auth, async (req, res) => {
         if (!file) {
 
             return res.status(404).json({
-                message: "Not found"
+                message: "File not found"
             });
         }
 
@@ -154,17 +182,27 @@ router.delete("/:id", auth, async (req, res) => {
             });
         }
 
-        await cloudinary.uploader.destroy(
-            file.publicId,
-            {
-                resource_type: "raw"
+        // ===== DELETE FROM CLOUDINARY =====
+
+        if (file.publicId && file.publicId.trim() !== "") {
+
+            try {
+
+                await cloudinary.uploader.destroy(file.publicId);
+
+            } catch (cloudErr) {
+
+                console.log("Cloudinary Delete Error:");
+                console.log(cloudErr);
             }
-        );
+        }
+
+        // ===== DELETE FROM DB =====
 
         await File.findByIdAndDelete(req.params.id);
 
         res.json({
-            message: "Deleted"
+            message: "Deleted Successfully"
         });
 
     } catch (err) {
@@ -178,7 +216,8 @@ router.delete("/:id", auth, async (req, res) => {
     }
 });
 
-// SHARED FILES
+// ================= SHARED FILES =================
+
 router.get("/shared/:groupCode", auth, async (req, res) => {
 
     try {
