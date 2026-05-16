@@ -17,7 +17,7 @@ const cloudinary = require("../config/cloudinary");
 // TEMP STORAGE
 
 const upload = multer({
-    dest: "temp/"
+    dest: "/tmp/"
 });
 
 
