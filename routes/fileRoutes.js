@@ -39,7 +39,7 @@ router.post(
                 const result = await cloudinary.uploader.upload(
                     file.path,
                     {
-                        resource_type: "raw",
+                        resource_type: "auto",
                         folder: `notesweb/${req.user.id}/${req.body.subject}`
                     }
                 );
@@ -138,7 +138,7 @@ router.delete("/:id", auth, async (req, res) => {
         await cloudinary.uploader.destroy(
             file.publicId,
             {
-                resource_type: "raw"
+                resource_type: "auto"
             }
         );
 
