@@ -12,7 +12,8 @@ const cloudinary = require("../config/cloudinary");
 const upload = multer({
     dest: "temp/",
     limits: {
-fileSize: 50 * 1024 * 1024    }
+        fileSize: 50 * 1024 * 1024
+    }
 });
 
 // ================= UPLOAD FILES =================
@@ -40,6 +41,7 @@ router.post(
                 console.log("Uploading:", file.originalname);
 
                 // ===== UPLOAD TO CLOUDINARY =====
+
                 const result = await cloudinary.uploader.upload(
                     file.path,
                     {
@@ -53,31 +55,19 @@ router.post(
                     }
                 );
 
-                // REMOVE TEMP FILE
-                if (fs.existsSync(file.path)) {
-                    fs.unlinkSync(file.path);
-                }
-
-                // ORIGINAL FILE URL
-                const viewUrl = result.secure_url;
-
-                // DOWNLOAD URL
-                const downloadUrl = result.secure_url + "?download=true";
                 // ===== REMOVE TEMP FILE =====
 
                 if (fs.existsSync(file.path)) {
                     fs.unlinkSync(file.path);
                 }
 
-                // ===== ORIGINAL FILE OPEN =====
+                // ===== VIEW URL =====
 
+                const viewUrl = result.secure_url;
 
-                // ===== FORCE DOWNLOAD =====
+                // ===== DOWNLOAD URL =====
 
-                const downloadUrl = result.secure_url.replace(
-                    "/upload/",
-                    "/upload/fl_attachment/"
-                );
+                const downloadUrl = result.secure_url + "?download=true";
 
                 // ===== SAVE DB =====
 
@@ -193,7 +183,12 @@ router.delete("/:id", auth, async (req, res) => {
 
             try {
 
-                await cloudinary.uploader.destroy(file.publicId);
+                await cloudinary.uploader.destroy(
+                    file.publicId,
+                    {
+                        resource_type: "raw"
+                    }
+                );
 
             } catch (cloudErr) {
 
@@ -202,7 +197,7 @@ router.delete("/:id", auth, async (req, res) => {
             }
         }
 
-        // ===== DELETE FROM DB =====
+        // ===== DELETE FROM DATABASE =====
 
         await File.findByIdAndDelete(req.params.id);
 
