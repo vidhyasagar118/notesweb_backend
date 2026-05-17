@@ -70,7 +70,10 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
             // ✅ USE RAW DIRECTLY
             const viewUrl = rawUrl;
 
-            const downloadUrl = rawUrl + "?fl_attachment=true";
+        const downloadUrl = rawUrl.replace(
+   "/upload/",
+   "/upload/fl_attachment/"
+);
 
             const newFile = await File.create({
                 userId: req.user.id,
