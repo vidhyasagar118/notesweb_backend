@@ -59,6 +59,9 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
         unique_filename: true
     }
 );
+console.log(result.secure_url);
+console.log(result.resource_type);
+console.log(result.format);
 
             // delete temp file
             if (fs.existsSync(file.path)) {
