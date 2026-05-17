@@ -48,17 +48,17 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
         for (const file of req.files) {
 
             const result = await cloudinary.uploader.upload(
-                file.path,
-                {
-                    resource_type: "raw",
-                     type: "upload",   // ✅ ADD THIS
-        access_mode: "public",  // ✅ ADD THIS
-format: "pdf",
-                    folder: `notesweb/${req.user.id}/${req.body.subject}`,
-                    use_filename: true,
-                    unique_filename: true
-                }
-            );
+    file.path,
+    {
+        resource_type: "auto",   // ✅ FINAL
+        allowed_formats: ["pdf"], // ✅ IMPORTANT
+        type: "upload",
+        access_mode: "public",
+        folder: `notesweb/${req.user.id}/${req.body.subject}`,
+        use_filename: true,
+        unique_filename: true
+    }
+);
 
             // delete temp file
             if (fs.existsSync(file.path)) {
