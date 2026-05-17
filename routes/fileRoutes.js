@@ -50,7 +50,7 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
             const result = await cloudinary.uploader.upload(
                 file.path,
                 {
-                    resource_type: "raw",
+                    resource_type: "auto",
                      type: "upload",   // ✅ ADD THIS
         access_mode: "public",  // ✅ ADD THIS
 
