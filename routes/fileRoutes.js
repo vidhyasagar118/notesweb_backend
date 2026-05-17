@@ -51,6 +51,9 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
                 file.path,
                 {
                     resource_type: "raw",
+                     type: "upload",   // ✅ ADD THIS
+        access_mode: "public",  // ✅ ADD THIS
+
                     format: "pdf",
                     folder: `notesweb/${req.user.id}/${req.body.subject}`,
                     use_filename: true,
@@ -63,8 +66,10 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
                 fs.unlinkSync(file.path);
             }
 
-            const viewUrl = result.secure_url;
-
+const viewUrl = result.secure_url.replace(
+    "/upload/",
+    "/upload/fl_inline/"
+);
             const downloadUrl = result.secure_url.replace(
                 "/upload/",
                 "/upload/fl_attachment/"
