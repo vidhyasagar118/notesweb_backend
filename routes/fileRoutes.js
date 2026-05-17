@@ -1,15 +1,14 @@
 const router = require("express").Router();
 const multer = require("multer");
 const fs = require("fs");
+const path = require("path");
 
 const auth = require("../middleware/authMiddleware");
 const File = require("../models/File");
 const User = require("../models/User");
 const cloudinary = require("../config/cloudinary");
 
-const path = require("path");
-
-// ================= TEMP FOLDER FIX =================
+// ================= TEMP FOLDER =================
 
 const tempDir = path.join(__dirname, "../temp");
 
@@ -17,11 +16,11 @@ if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
 }
 
-// ================= MULTER FIX =================
+// ================= MULTER =================
 
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        cb(null, tempDir);   // ✅ FIXED (IMPORTANT)
+        cb(null, tempDir);
     },
     filename: function (req, file, cb) {
         cb(null, Date.now() + "-" + file.originalname);
@@ -31,7 +30,7 @@ const storage = multer.diskStorage({
 const upload = multer({
     storage: storage,
     limits: {
-        fileSize: 10 * 1024 * 1024   // ✅ 10MB
+        fileSize: 10 * 1024 * 1024 // 10MB
     }
 });
 
@@ -47,29 +46,27 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
 
         for (const file of req.files) {
 
+            // ✅ FINAL CLOUDINARY FIX
             const result = await cloudinary.uploader.upload(
-    file.path,
-    {
-        resource_type: "auto",   // ✅ FINAL
-        allowed_formats: ["pdf"], // ✅ IMPORTANT
-        type: "upload",
-        access_mode: "public",
-        folder: `notesweb/${req.user.id}/${req.body.subject}`,
-        use_filename: true,
-        unique_filename: true
-    }
-);
-console.log(result.secure_url);
-console.log(result.resource_type);
-console.log(result.format);
+                file.path,
+                {
+                    resource_type: "raw",   // 🔥 MUST
+                    folder: `notesweb/${req.user.id}/${req.body.subject}`,
+                    use_filename: true,
+                    unique_filename: true
+                }
+            );
+
+            console.log("URL:", result.secure_url);
+            console.log("TYPE:", result.resource_type); // should be raw
 
             // delete temp file
             if (fs.existsSync(file.path)) {
                 fs.unlinkSync(file.path);
             }
-const viewUrl = result.secure_url;   // ✅ direct use
 
-const downloadUrl = result.secure_url + "?fl_attachment=true";  // ✅ correct way
+            const viewUrl = result.secure_url;
+            const downloadUrl = result.secure_url + "?fl_attachment=true";
 
             const newFile = await File.create({
                 userId: req.user.id,
@@ -139,7 +136,7 @@ router.delete("/:id", auth, async (req, res) => {
         }
 
         await cloudinary.uploader.destroy(file.publicId, {
-            resource_type: "raw"
+            resource_type: "raw" // ✅ IMPORTANT
         });
 
         await File.findByIdAndDelete(req.params.id);
