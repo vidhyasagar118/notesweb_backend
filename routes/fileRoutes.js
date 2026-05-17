@@ -54,7 +54,6 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
                      type: "upload",   // ✅ ADD THIS
         access_mode: "public",  // ✅ ADD THIS
 
-                    format: "pdf",
                     folder: `notesweb/${req.user.id}/${req.body.subject}`,
                     use_filename: true,
                     unique_filename: true
@@ -65,15 +64,9 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
             if (fs.existsSync(file.path)) {
                 fs.unlinkSync(file.path);
             }
+const viewUrl = result.secure_url;   // ✅ direct use
 
-const viewUrl = result.secure_url.replace(
-    "/upload/",
-    "/upload/fl_inline/"
-);
-            const downloadUrl = result.secure_url.replace(
-                "/upload/",
-                "/upload/fl_attachment/"
-            );
+const downloadUrl = result.secure_url + "?fl_attachment=true";  // ✅ correct way
 
             const newFile = await File.create({
                 userId: req.user.id,
