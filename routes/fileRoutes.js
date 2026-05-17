@@ -7,11 +7,21 @@ const File = require("../models/File");
 const User = require("../models/User");
 const cloudinary = require("../config/cloudinary");
 
+const path = require("path");
+
+// ================= TEMP FOLDER FIX =================
+
+const tempDir = path.join(__dirname, "../temp");
+
+if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+}
+
 // ================= MULTER FIX =================
 
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        cb(null, "temp/");
+        cb(null, tempDir);   // ✅ FIXED (IMPORTANT)
     },
     filename: function (req, file, cb) {
         cb(null, Date.now() + "-" + file.originalname);
@@ -40,21 +50,20 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
             const result = await cloudinary.uploader.upload(
                 file.path,
                 {
-                    resource_type: "raw",   // ✅ FIX
-                    format: "pdf",          // ✅ FIX
+                    resource_type: "raw",
+                    format: "pdf",
                     folder: `notesweb/${req.user.id}/${req.body.subject}`,
                     use_filename: true,
                     unique_filename: true
                 }
             );
 
-            // delete temp
+            // delete temp file
             if (fs.existsSync(file.path)) {
                 fs.unlinkSync(file.path);
             }
 
-            // ✅ FIXED URLS
-            const viewUrl = result.secure_url; // no inline
+            const viewUrl = result.secure_url;
 
             const downloadUrl = result.secure_url.replace(
                 "/upload/",
@@ -79,7 +88,6 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
     } catch (err) {
         console.log(err);
 
-        // cleanup
         if (req.files) {
             req.files.forEach(file => {
                 if (fs.existsSync(file.path)) {
@@ -130,7 +138,7 @@ router.delete("/:id", auth, async (req, res) => {
         }
 
         await cloudinary.uploader.destroy(file.publicId, {
-            resource_type: "raw"   // ✅ MATCHED
+            resource_type: "raw"
         });
 
         await File.findByIdAndDelete(req.params.id);
