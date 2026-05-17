@@ -30,7 +30,7 @@ const storage = multer.diskStorage({
 const upload = multer({
     storage: storage,
     limits: {
-        fileSize: 10 * 1024 * 1024 // 10MB
+        fileSize: 10 * 1024 * 1024
     }
 });
 
@@ -46,27 +46,31 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
 
         for (const file of req.files) {
 
-            // ✅ FINAL CLOUDINARY FIX
             const result = await cloudinary.uploader.upload(
                 file.path,
                 {
-                    resource_type: "raw",   // 🔥 MUST
+                    resource_type: "raw", // ✅ PDF ke liye correct
                     folder: `notesweb/${req.user.id}/${req.body.subject}`,
                     use_filename: true,
                     unique_filename: true
                 }
             );
 
-            console.log("URL:", result.secure_url);
-            console.log("TYPE:", result.resource_type); // should be raw
-
             // delete temp file
             if (fs.existsSync(file.path)) {
                 fs.unlinkSync(file.path);
             }
 
-            const viewUrl = result.secure_url;
-            const downloadUrl = result.secure_url + "?fl_attachment=true";
+            // ✅ IMPORTANT FIX
+            const rawUrl = result.secure_url;
+
+            // ❌ REMOVE THIS (galti yahi thi)
+            // const viewUrl = rawUrl.replace("/raw/upload/", "/image/upload/");
+
+            // ✅ USE RAW DIRECTLY
+            const viewUrl = rawUrl;
+
+            const downloadUrl = rawUrl + "?fl_attachment=true";
 
             const newFile = await File.create({
                 userId: req.user.id,
@@ -136,7 +140,7 @@ router.delete("/:id", auth, async (req, res) => {
         }
 
         await cloudinary.uploader.destroy(file.publicId, {
-            resource_type: "raw" // ✅ IMPORTANT
+            resource_type: "raw"
         });
 
         await File.findByIdAndDelete(req.params.id);
