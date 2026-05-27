@@ -7,7 +7,6 @@ dotenv.config();
 
 const app = express();
 
-require("./config/cloudinary");
 
 const authRoutes = require("./routes/authRoutes");
 const fileRoutes = require("./routes/fileRoutes");
