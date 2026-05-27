@@ -55,21 +55,23 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
         for (const file of req.files) {
 
             // ================= GOOGLE DRIVE UPLOAD =================
+const response = await drive.files.create({
 
-            const response = await drive.files.create({
+    supportsAllDrives: true,
 
-                requestBody: {
-                    name: file.originalname,
-                    parents: [
-                        process.env.GOOGLE_DRIVE_FOLDER_ID
-                    ]
-                },
+    requestBody: {
+        name: file.originalname,
 
-                media: {
-                    mimeType: mime.lookup(file.path),
-                    body: fs.createReadStream(file.path)
-                }
-            });
+        parents: [
+            process.env.GOOGLE_DRIVE_FOLDER_ID
+        ]
+    },
+
+    media: {
+        mimeType: mime.lookup(file.path),
+        body: fs.createReadStream(file.path)
+    }
+});
 
             const fileId = response.data.id;
 
@@ -77,6 +79,7 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
 
             await drive.permissions.create({
 
+    supportsAllDrives: true,
                 fileId: fileId,
 
                 requestBody: {
