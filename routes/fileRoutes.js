@@ -83,15 +83,17 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
             const response = await drive.files.create({
                 requestBody: {
                     name: file.originalname,
-                    parents: [subjectFolderId]
+                    parents: [subjectFolderId],
                 },
 
                 media: {
                     mimeType: mime.lookup(file.originalname),
-                    body: fs.createReadStream(file.path)
+                    body: fs.createReadStream(file.path),
                 },
 
-                fields: "id, webViewLink"
+                fields: "id, webViewLink",
+
+                supportsAllDrives: true,
             });
 
             const fileId = response.data.id;
