@@ -1,4 +1,5 @@
 const router = require("express").Router();
+const auth = require("../middleware/authMiddleware");
 router.delete("/:id", auth, async (req, res) => {
 
     try {
