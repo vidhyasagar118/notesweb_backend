@@ -2,21 +2,20 @@ const router = require("express").Router();
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
+const mime = require("mime-types");
 
 const auth = require("../middleware/authMiddleware");
 const File = require("../models/File");
 const User = require("../models/User");
-const cloudinary = require("../config/cloudinary");
+const drive = require("../config/googleDrive");
 
-// ================= TEMP FOLDER =================
+const ROOT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
 const tempDir = path.join(__dirname, "../temp");
 
 if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
 }
-
-// ================= MULTER =================
 
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -30,11 +29,36 @@ const storage = multer.diskStorage({
 const upload = multer({
     storage: storage,
     limits: {
-        fileSize: 10 * 1024 * 1024
+        fileSize: 100 * 1024 * 1024
     }
 });
 
-// ================= UPLOAD =================
+async function createFolder(name, parentId = null) {
+
+    const query = parentId
+        ? `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`
+        : `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+
+    const existing = await drive.files.list({
+        q: query,
+        fields: "files(id, name)"
+    });
+
+    if (existing.data.files.length > 0) {
+        return existing.data.files[0].id;
+    }
+
+    const folder = await drive.files.create({
+        requestBody: {
+            name,
+            mimeType: "application/vnd.google-apps.folder",
+            parents: parentId ? [parentId] : []
+        },
+        fields: "id"
+    });
+
+    return folder.data.id;
+}
 
 router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
     try {
@@ -46,34 +70,43 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
 
         for (const file of req.files) {
 
-            const result = await cloudinary.uploader.upload(
-                file.path,
-                {
-                    resource_type: "raw", // ✅ PDF ke liye correct
-                    folder: `notesweb/${req.user.id}/${req.body.subject}`,
-                    use_filename: true,
-                    unique_filename: true
-                }
+            const semesterFolderId = await createFolder(
+                req.body.semester,
+                ROOT_FOLDER_ID
             );
 
-            // delete temp file
-            if (fs.existsSync(file.path)) {
-                fs.unlinkSync(file.path);
-            }
+            const subjectFolderId = await createFolder(
+                req.body.subject,
+                semesterFolderId
+            );
 
-            // ✅ IMPORTANT FIX
-            const rawUrl = result.secure_url;
+            const response = await drive.files.create({
+                requestBody: {
+                    name: file.originalname,
+                    parents: [subjectFolderId]
+                },
 
-            // ❌ REMOVE THIS (galti yahi thi)
-            // const viewUrl = rawUrl.replace("/raw/upload/", "/image/upload/");
+                media: {
+                    mimeType: mime.lookup(file.originalname),
+                    body: fs.createReadStream(file.path)
+                },
 
-            // ✅ USE RAW DIRECTLY
-            const viewUrl = rawUrl;
+                fields: "id, webViewLink"
+            });
 
-const downloadUrl = rawUrl.replace(
-   "/upload/",
-   "/upload/fl_attachment/"
-);
+            const fileId = response.data.id;
+
+            await drive.permissions.create({
+                fileId,
+                requestBody: {
+                    role: "reader",
+                    type: "anyone"
+                }
+            });
+
+            const viewUrl = `https://drive.google.com/file/d/${fileId}/view`;
+            const downloadUrl = `https://drive.google.com/uc?id=${fileId}&export=download`;
+
             const newFile = await File.create({
                 userId: req.user.id,
                 subject: req.body.subject,
@@ -81,10 +114,14 @@ const downloadUrl = rawUrl.replace(
                 filename: file.originalname,
                 filepath: viewUrl,
                 downloadUrl: downloadUrl,
-                publicId: result.public_id
+                publicId: fileId
             });
 
             savedFiles.push(newFile);
+
+            if (fs.existsSync(file.path)) {
+                fs.unlinkSync(file.path);
+            }
         }
 
         res.json(savedFiles);
@@ -107,8 +144,6 @@ const downloadUrl = rawUrl.replace(
     }
 });
 
-// ================= MY FILES =================
-
 router.get("/myfiles", auth, async (req, res) => {
     try {
         const files = await File.find({ userId: req.user.id });
@@ -129,8 +164,6 @@ router.get("/myfiles", auth, async (req, res) => {
     }
 });
 
-// ================= DELETE =================
-
 router.delete("/:id", auth, async (req, res) => {
     try {
         const file = await File.findById(req.params.id);
@@ -141,8 +174,8 @@ router.delete("/:id", auth, async (req, res) => {
             return res.status(403).json({ message: "Unauthorized" });
         }
 
-        await cloudinary.uploader.destroy(file.publicId, {
-            resource_type: "raw"
+        await drive.files.delete({
+            fileId: file.publicId
         });
 
         await File.findByIdAndDelete(req.params.id);
@@ -153,8 +186,6 @@ router.delete("/:id", auth, async (req, res) => {
         res.status(500).json({ message: "Delete failed" });
     }
 });
-
-// ================= SHARED =================
 
 router.get("/shared/:groupCode", auth, async (req, res) => {
     try {
