@@ -1,8 +1,7 @@
 const { google } = require("googleapis");
-const path = require("path");
 
 const auth = new google.auth.GoogleAuth({
-  keyFile: path.join(__dirname, "../service-account.json"),
+  credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT),
   scopes: ["https://www.googleapis.com/auth/drive"],
 });
 
