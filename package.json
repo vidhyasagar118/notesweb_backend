@@ -18,7 +18,13 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+<<<<<<< HEAD
     "jsonwebtoken": "^9.0.3",
+=======
+    "googleapis": "^172.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "mime-types": "^3.0.2",
+>>>>>>> dc61b2a2b18c9b30610a763fe21eccce3733ad28
     "mongoose": "^9.6.2",
     "multer": "^2.1.1",
     "multer-storage-cloudinary": "^4.0.0"

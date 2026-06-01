@@ -1,3 +1,8 @@
 node_modules/
 .env
+<<<<<<< HEAD
 uploads/
+=======
+uploads/
+service-account.json
+>>>>>>> dc61b2a2b18c9b30610a763fe21eccce3733ad28
