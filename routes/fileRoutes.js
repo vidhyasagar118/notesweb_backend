@@ -2,7 +2,7 @@ const router = require("express").Router();
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
-
+const User = require("../models/User");
 const auth = require("../middleware/authMiddleware");
 const File = require("../models/File");
 const cloudinary = require("../config/cloudinary");
@@ -25,11 +25,25 @@ const storage = multer.diskStorage({
         cb(null, Date.now() + "-" + file.originalname);
     }
 });
-
 const upload = multer({
-    storage: storage,
+    storage,
     limits: {
         fileSize: 10 * 1024 * 1024
+    },
+    fileFilter: (req, file, cb) => {
+
+        if (
+            file.mimetype !==
+            "application/pdf"
+        ) {
+            return cb(
+                new Error(
+                    "Only PDF files allowed"
+                )
+            );
+        }
+
+        cb(null, true);
     }
 });
 
@@ -98,7 +112,21 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
 
 router.delete("/:id", auth, async (req, res) => {
     try {
-        const file = await File.findById(req.params.id);
+       const file = await File.findById(req.params.id);
+
+if (!file) {
+    return res.status(404).json({
+        message: "File not found"
+    });
+}
+
+if (
+    file.userId.toString() !== req.user.id
+) {
+    return res.status(403).json({
+        message: "Unauthorized"
+    });
+}
 
         if (!file) return res.status(404).json({ message: "File not found" });
 
@@ -112,6 +140,88 @@ router.delete("/:id", auth, async (req, res) => {
 
     } catch (err) {
         res.status(500).json({ message: "Delete failed" });
+    }
+});
+
+// ================= SHARED FILES =================
+
+router.get("/shared/:groupCode", auth, async (req, res) => {
+
+    try {
+
+        const user = await User.findOne({
+            groupCode: req.params.groupCode
+        });
+
+        if (!user) {
+            return res.status(404).json({
+                message: "Invalid Group Code"
+            });
+        }
+
+        const files = await File.find({
+            userId: user._id
+        });
+
+        const grouped = {};
+
+        files.forEach(file => {
+
+            if (!grouped[file.semester]) {
+                grouped[file.semester] = {};
+            }
+
+            if (!grouped[file.semester][file.subject]) {
+                grouped[file.semester][file.subject] = [];
+            }
+
+            grouped[file.semester][file.subject].push(file);
+        });
+
+        res.json({
+            owner: user.name,
+            grouped
+        });
+
+    } catch (err) {
+
+        res.status(500).json({
+            message: err.message
+        });
+    }
+});
+// ================= MY FILES =================
+
+router.get("/myfiles", auth, async (req, res) => {
+
+    try {
+
+        const files = await File.find({
+            userId: req.user.id
+        });
+
+        const grouped = {};
+
+        files.forEach(file => {
+
+            if (!grouped[file.semester]) {
+                grouped[file.semester] = {};
+            }
+
+            if (!grouped[file.semester][file.subject]) {
+                grouped[file.semester][file.subject] = [];
+            }
+
+            grouped[file.semester][file.subject].push(file);
+        });
+
+        res.json(grouped);
+
+    } catch (err) {
+
+        res.status(500).json({
+            message: err.message
+        });
     }
 });
 
