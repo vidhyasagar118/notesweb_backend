@@ -12,6 +12,7 @@ require("./config/cloudinary");
 const authRoutes = require("./routes/authRoutes");
 const fileRoutes = require("./routes/fileRoutes");
 
+const contactRoutes=require("./routes/contactRoutes");
 // ================= MIDDLEWARE =================
 
 app.use(cors());
@@ -27,7 +28,10 @@ app.use(express.urlencoded({
 app.use("/api/auth", authRoutes);
 
 app.use("/api/files", fileRoutes);
-
+app.use(
+  "/api/contact",
+  require("./routes/contactRoutes")
+);
 app.get("/", (req, res) => {
     res.send("Backend Running 🚀");
 });
