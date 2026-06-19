@@ -35,28 +35,22 @@ router.post("/register", async (req, res) => {
 
 router.post("/login", async (req, res) => {
 
+    console.time("LOGIN");
+
     const { name, password } = req.body;
 
     const user = await User.findOne({ name });
 
-    if (!user) return res.status(400).json({ message: "User not found" });
-
     const match = await bcrypt.compare(password, user.password);
 
-    if (!match) return res.status(400).json({ message: "Wrong password" });
-
-  const token = jwt.sign(
-  {
-    id: user._id,
-    name: user.name
-  },
-  process.env.JWT_SECRET,
-  {
-    expiresIn: "7d"
-  }
-);
+    const token = jwt.sign(
+        { id: user._id, name: user.name },
+        process.env.JWT_SECRET,
+        { expiresIn: "7d" }
+    );
 
     res.json({ token, user });
-});
 
+    console.timeEnd("LOGIN");
+});
 module.exports = router;
