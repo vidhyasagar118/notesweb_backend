@@ -15,7 +15,6 @@ const fileRoutes = require("./routes/fileRoutes");
 const contactRoutes=require("./routes/contactRoutes");
 const statsRoutes = require("./routes/statsRoutes");
 
-app.use("/api/stats", statsRoutes);
 // ================= MIDDLEWARE =================
 
 app.use(cors());
@@ -29,6 +28,7 @@ app.use(express.urlencoded({
 // ================= ROUTES =================
 
 app.use("/api/auth", authRoutes);
+app.use("/api/stats", statsRoutes);
 
 app.use("/api/files", fileRoutes);
 app.use(
