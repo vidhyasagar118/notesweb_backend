@@ -2,13 +2,18 @@ const router = require("express").Router();
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
+
 const User = require("../models/User");
 const auth = require("../middleware/authMiddleware");
 const File = require("../models/File");
-const cloudinary = require("../config/cloudinary");
 
+const s3 = require("../config/s3");
+
+const {
+  PutObjectCommand,
+  DeleteObjectCommand
+} = require("@aws-sdk/client-s3");
 // ================= TEMP FOLDER =================
-
 const tempDir = path.join(__dirname, "../temp");
 
 if (!fs.existsSync(tempDir)) {
@@ -25,26 +30,32 @@ const storage = multer.diskStorage({
         cb(null, Date.now() + "-" + file.originalname);
     }
 });
+
 const upload = multer({
     storage,
-    limits: {
-        fileSize: 10 * 1024 * 1024
-    },
-    fileFilter: (req, file, cb) => {
+limits: {
+    fileSize: 1024 * 1024 * 1024
+},
 
-        if (
-            file.mimetype !==
-            "application/pdf"
-        ) {
-            return cb(
-                new Error(
-                    "Only PDF files allowed"
-                )
-            );
-        }
 
-        cb(null, true);
+  fileFilter: (req, file, cb) => {
+
+    const allowedTypes = [
+        "application/pdf",
+        "video/mp4",
+        "video/x-msvideo",
+        "video/x-matroska",
+        "video/quicktime"
+    ];
+
+    if (!allowedTypes.includes(file.mimetype)) {
+        return cb(
+            new Error("Only PDF and Video files allowed")
+        );
     }
+
+    cb(null, true);
+}
 });
 
 // ================= UPLOAD =================
@@ -57,38 +68,47 @@ router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
 
         const savedFiles = [];
 
-        for (const file of req.files) {
+for (const file of req.files) {
 
-            const result = await cloudinary.uploader.upload(file.path, {
-                resource_type: "raw",
-                folder: `notesweb/${req.user.id}/${req.body.subject}`,
-                use_filename: true,
-                unique_filename: true
-            });
+const fileStream = fs.createReadStream(file.path);
+ const key =
+        `${req.user.id}/${req.body.subject}/${Date.now()}-${file.originalname}`;
 
-            fs.unlinkSync(file.path);
+await s3.send(
+  new PutObjectCommand({
+    Bucket: process.env.AWS_BUCKET_NAME,
+    Key: key,
+    Body: fileStream,
+    ContentType: file.mimetype
+  })
+);
+   
 
-            const rawUrl = result.secure_url;
 
-            const downloadUrl = rawUrl.replace(
-                "/upload/",
-                "/upload/fl_attachment/"
-            );
+    if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+    }
 
-            const newFile = await File.create({
-                userId: req.user.id,
-                subject: req.body.subject,
-                semester: req.body.semester,
-                filename: file.originalname,
-                filepath: rawUrl,
-                downloadUrl: downloadUrl,
-                publicId: result.public_id
-            });
+    const fileUrl =
+        `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
 
-            savedFiles.push(newFile);
-        }
+    const newFile = await File.create({
+        userId: req.user.id,
+        subject: req.body.subject,
+        semester: req.body.semester,
+        filename: file.originalname,
 
-        res.json(savedFiles);
+        fileType: file.mimetype,
+        fileSize: file.size,
+
+        filepath: fileUrl,
+        downloadUrl: fileUrl,
+        publicId: key
+    });
+
+    savedFiles.push(newFile);
+}
+return res.json(savedFiles);
 
     } catch (err) {
         console.log(err);
@@ -130,9 +150,12 @@ if (
 
         if (!file) return res.status(404).json({ message: "File not found" });
 
-        await cloudinary.uploader.destroy(file.publicId, {
-            resource_type: "raw"
-        });
+await s3.send(
+    new DeleteObjectCommand({
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: file.publicId
+    })
+);
 
         await File.findByIdAndDelete(req.params.id);
 
