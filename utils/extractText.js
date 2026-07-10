@@ -1,68 +1,63 @@
 const axios = require("axios");
 const pdfParse = require("pdf-parse");
-const Tesseract = require("tesseract.js");
-const fs = require("fs");
-const path = require("path");
-const pdf = require("pdf-poppler");
+const {
+  TextractClient,
+  DetectDocumentTextCommand
+} = require("@aws-sdk/client-textract");
+
+const textract = new TextractClient({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  }
+});
+
+// 🔥 GET KEY FROM S3 URL
+function getKeyFromUrl(url) {
+  const parts = url.split(".amazonaws.com/");
+  return parts[1];
+}
 
 const extractPDFText = async (url) => {
-  const response = await axios.get(url, {
-    responseType: "arraybuffer"
-  });
-
-  // ✅ STEP 1: NORMAL TEXT
-  const data = await pdfParse(response.data);
-  let text = data.text;
-
-  // ✅ STEP 2: OCR (IF NO TEXT)
-  if (!text || text.trim().length < 50) {
-    console.log("⚠️ No text found, using OCR...");
-
-    const pdfPath = path.join(__dirname, "temp.pdf");
-    const outputDir = path.join(__dirname, "output");
-
-    // ✅ save pdf
-    fs.writeFileSync(pdfPath, response.data);
-
-    // ✅ ensure folder exists
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
-
-    console.log("PDF saved at:", pdfPath);
-    console.log("Output dir:", outputDir);
-
-    // 🔥 convert PDF → image
-    await pdf.convert(pdfPath, {
-      format: "png",
-      out_dir: outputDir,
-      out_prefix: "img", // ✅ FIXED
-      page: null
+  try {
+    // ✅ STEP 1: Try normal PDF text
+    const response = await axios.get(url, {
+      responseType: "arraybuffer"
     });
 
-    const files = fs.readdirSync(outputDir);
+    const data = await pdfParse(response.data);
+    let text = data.text;
 
-    let ocrText = "";
+    // ✅ STEP 2: If text not found → use Textract
+    if (!text || text.trim().length < 50) {
+      console.log("⚠️ Using AWS Textract...");
 
-    for (const file of files) {
-      const result = await Tesseract.recognize(
-        path.join(outputDir, file),
-        "eng"
-      );
+      const key = getKeyFromUrl(url);
 
-      ocrText += result.data.text + "\n";
+      const command = new DetectDocumentTextCommand({
+        Document: {
+          S3Object: {
+            Bucket: process.env.AWS_BUCKET_NAME,
+            Name: key
+          }
+        }
+      });
+
+      const result = await textract.send(command);
+
+      text = result.Blocks
+        .filter(b => b.BlockType === "LINE")
+        .map(b => b.Text)
+        .join(" ");
     }
 
-    text = ocrText;
+    return text;
 
-    // ✅ CLEANUP
-    fs.unlinkSync(pdfPath);
-    files.forEach(file =>
-      fs.unlinkSync(path.join(outputDir, file))
-    );
+  } catch (err) {
+    console.log(err);
+    return "";
   }
-
-  return text;
 };
 
 module.exports = extractPDFText;
