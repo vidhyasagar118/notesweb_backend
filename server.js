@@ -24,6 +24,7 @@ app.use(express.urlencoded({
     extended: true
 }));
 
+
 // ================= ROUTES =================
 
 app.use("/api/auth", authRoutes);
@@ -37,7 +38,7 @@ app.use(
 app.get("/", (req, res) => {
     res.send("Backend Running 🚀");
 });
-
+app.use("/api/ai", require("./routes/aiRoutes"));
 // ================= ERROR HANDLER =================
 
 app.use((err, req, res, next) => {
