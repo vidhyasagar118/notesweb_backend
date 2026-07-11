@@ -41,20 +41,33 @@ function findRelevantChunk(chunks, question) {
 
   return bestChunk;
 }
-
-// 🔥 MAIN ROUTE
 router.post("/ask-from-pdf", async (req, res) => {
   try {
     const { fileUrl, question } = req.body;
 
     const text = await extractPDFText(fileUrl);
 
+    // ❌ Case 1: No text
     if (!text || text.trim().length === 0) {
       return res.json({
-        answer: "No readable content found in PDF 😕"
+        answer: "PDF is handwritten, so I am unable to answer ✍️"
       });
     }
 
+    // ❌ Case 2: Very low words → handwritten / image PDF
+    const wordCount = text.trim().split(/\s+/).length;
+
+    // ❌ Case 3: Too many weird characters (optional smart check)
+    const specialCharRatio =
+      (text.match(/[^a-zA-Z0-9\s]/g) || []).length / text.length;
+
+    if (wordCount < 30 || specialCharRatio > 0.3) {
+      return res.json({
+        answer: "PDF is handwritten, so I am unable to answer ✍️"
+      });
+    }
+
+    // ✅ Normal PDF processing
     const cleanedText = text.replace(/\s+/g, " ");
 
     const chunks = splitText(cleanedText, 1200);
@@ -76,9 +89,11 @@ Rules:
 - Do NOT use Hinglish or mixed language
 - Improve the wording if the PDF text is messy
 - Keep the answer clean and well-structured
-`},{
-  role: "user",
-  content: `
+`
+        },
+        {
+          role: "user",
+          content: `
 Context:
 ${relevantChunk}
 
@@ -94,7 +109,7 @@ Give answer in this format:
 6. Use proper spacing and line breaks
 7. Keep it clean and readable
 `
-}
+        }
       ]
     });
 
@@ -107,7 +122,6 @@ Give answer in this format:
     res.status(500).json({ message: "AI error" });
   }
 });
-
 // 🌍 GLOBAL AI
 router.post("/global-ask", async (req, res) => {
   try {
@@ -211,10 +225,29 @@ router.post("/smart-ask", async (req, res) => {
 
     let pdfText = "";
 
-    if (fileUrl) {
-      pdfText = await extractPDFText(fileUrl);
-      pdfText = pdfText.slice(0, 3000); // limit for speed
-    }
+   if (fileUrl) {
+  pdfText = await extractPDFText(fileUrl);
+
+  // ❌ Handwritten detection
+  if (!pdfText || pdfText.trim().length === 0) {
+    return res.json({
+      answer: "PDF is handwritten, so I am unable to answer ✍️"
+    });
+  }
+
+  const wordCount = pdfText.trim().split(/\s+/).length;
+
+  const specialCharRatio =
+    (pdfText.match(/[^a-zA-Z0-9\s]/g) || []).length / pdfText.length;
+
+  if (wordCount < 30 || specialCharRatio > 0.3) {
+    return res.json({
+      answer: "PDF is handwritten, so I am unable to answer ✍️"
+    });
+  }
+
+  pdfText = pdfText.slice(0, 3000); // limit for speed
+}
 
     const decision = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
