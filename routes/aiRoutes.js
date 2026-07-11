@@ -212,124 +212,198 @@ FOR NORMAL QUESTIONS:
     res.status(500).json({ message: "AI error" });
   }
 });
-
 router.post("/smart-ask", async (req, res) => {
   try {
     const { fileUrl, question } = req.body;
 
-    let pdfText = "";
+    if (!question || !question.trim()) {
+      return res.status(400).json({
+        answer: "Please enter a question."
+      });
+    }
 
-    let pdfData = { text: "", isHandwritten: false };
+    // ============================
+    // STEP 1: PEHLE DECIDE KARO
+    // PDF question hai ya GLOBAL
+    // ============================
+    const decision = await groq.chat.completions.create({
+      model: "llama-3.1-8b-instant",
+      temperature: 0,
+      messages: [
+        {
+          role: "system",
+          content: `
+You are an AI request router.
 
-if (fileUrl) {
-  pdfData = await extractPDFText(fileUrl);
+Decide whether the user's question requires information from the currently opened PDF.
 
-  if (pdfData.isHandwritten) {
-    return res.json({
-      answer: "PDF is handwritten, so I am unable to answer ✍️"
-    });
-  }
-}
-pdfText = pdfData.text.slice(0, 10000);
+Reply PDF only when the question clearly refers to:
+- this PDF
+- this document
+- these notes
+- this chapter
+- content, table, topic, date, notice or information inside the uploaded document
 
-   const decision = await groq.chat.completions.create({
-  model: "llama-3.1-8b-instant",
-  messages: [
-    {
-      role: "system",
-      content: `
-You are an AI router.
-
-Your job is to decide where the answer should come from.
-
-Rules:
-
-1. Reply PDF ONLY when user is asking about uploaded PDF content.
+Reply GLOBAL when the question is:
+- general knowledge
+- about development
+- about programming
+- about websites, apps, companies or technology
+- not clearly related to the opened PDF
 
 Examples:
-- Explain this chapter
-- What is written in this document?
-- According to this PDF explain...
 
-2. Reply GLOBAL for:
-- websites
-- apps
-- companies
-- programming questions not related to PDF
-- general knowledge
-- anything not clearly from PDF
+Question: What is written in this PDF?
+Answer: PDF
 
-3. If unsure, always reply GLOBAL.
+Question: Explain the second chapter from these notes.
+Answer: PDF
 
-Output only:
-PDF or GLOBAL
+Question: Give me proper information about development.
+Answer: GLOBAL
+
+Question: What is web development?
+Answer: GLOBAL
+
+Question: Explain React.
+Answer: GLOBAL
+
+If unsure, reply GLOBAL.
+
+Return only one word:
+PDF
+or
+GLOBAL
 `
-    },
-    {
-      role: "user",
-      content: `
-Question:
-${question}
-`
-    }
-  ]
-});
-    const type = decision.choices[0].message.content.trim();
+        },
+        {
+          role: "user",
+          content: question.trim()
+        }
+      ]
+    });
 
-    // 🔥 CASE 1: PDF
-    if (type === "PDF") {
-      const chunks = splitText(pdfText, 1200);
-      const relevantChunk = findRelevantChunk(chunks, question);
+    const rawType =
+      decision.choices?.[0]?.message?.content?.trim().toUpperCase() || "";
 
+    const type = rawType === "PDF" ? "PDF" : "GLOBAL";
+
+    console.log("AI ROUTE TYPE:", type);
+    console.log("QUESTION:", question);
+
+    // ============================
+    // CASE 1: GLOBAL QUESTION
+    // PDF KO EXTRACT HI MAT KARO
+    // ============================
+    if (type === "GLOBAL") {
       const response = await groq.chat.completions.create({
         model: "llama-3.1-8b-instant",
         messages: [
           {
             role: "system",
-            content: "You are a helpful teacher."
+            content: `
+You are a smart and helpful AI assistant.
+
+Rules:
+- Answer the user's general question directly.
+- Use clear and proper English.
+- Explain step by step when needed.
+- Keep the response clean and well structured.
+- Do not force the answer to relate to the opened PDF.
+`
           },
           {
             role: "user",
-            content: `
-Context:
-${relevantChunk}
-
-Question:
-${question}
-
-Give clear answer.
-`
+            content: question.trim()
           }
         ]
       });
 
       return res.json({
-        answer: response.choices[0].message.content
+        source: "GLOBAL",
+        answer:
+          response.choices?.[0]?.message?.content ||
+          "Unable to generate an answer."
       });
     }
 
-    // 🔥 CASE 2: GLOBAL
+    // ============================
+    // CASE 2: PDF QUESTION
+    // AB PDF EXTRACT KARO
+    // ============================
+    if (!fileUrl) {
+      return res.json({
+        source: "PDF",
+        answer: "Please open a PDF before asking a question about it."
+      });
+    }
+
+    const pdfData = await extractPDFText(fileUrl);
+
+    if (pdfData.error) {
+      return res.json({
+        source: "PDF",
+        answer: "I could not read this PDF. Please try uploading it again."
+      });
+    }
+
+    if (pdfData.isScanned || !pdfData.text) {
+      return res.json({
+        source: "PDF",
+        answer:
+          "This PDF appears to contain scanned images instead of selectable text. OCR support is required to read it."
+      });
+    }
+
+    const cleanedText = pdfData.text.replace(/\s+/g, " ").trim();
+
+    const chunks = splitText(cleanedText, 1200);
+    const relevantChunk = findRelevantChunk(chunks, question);
+
     const response = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
       messages: [
         {
           role: "system",
-          content: "You are a smart AI assistant."
+          content: `
+You are a helpful teacher.
+
+Answer only using the provided PDF context.
+
+Rules:
+- Use clear and proper English.
+- Explain in simple language.
+- Do not invent information not available in the context.
+- If the answer is not present, clearly say that it was not found in the PDF.
+`
         },
         {
           role: "user",
-          content: question
+          content: `
+PDF Context:
+${relevantChunk}
+
+Question:
+${question}
+
+Give a clear and structured answer.
+`
         }
       ]
     });
 
-    res.json({
-      answer: response.choices[0].message.content
+    return res.json({
+      source: "PDF",
+      answer:
+        response.choices?.[0]?.message?.content ||
+        "Unable to generate an answer."
     });
-
   } catch (err) {
-    console.log(err);
-    res.status(500).json({ message: "AI error" });
+    console.error("Smart AI error:", err);
+
+    return res.status(500).json({
+      answer: "AI service error. Please try again."
+    });
   }
 });
 module.exports = router;

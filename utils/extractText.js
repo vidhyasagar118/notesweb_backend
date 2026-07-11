@@ -3,32 +3,42 @@ const pdfParse = require("pdf-parse");
 
 const extractPDFText = async (url) => {
   try {
+    if (!url) {
+      return {
+        text: "",
+        isScanned: false,
+        error: "PDF URL missing"
+      };
+    }
+
     const response = await axios.get(url, {
-      responseType: "arraybuffer"
+      responseType: "arraybuffer",
+      timeout: 30000
     });
 
     const data = await pdfParse(response.data);
-    let text = data.text || "";
+    const text = (data.text || "").trim();
 
-    // 🔥 SMART CHECK (NO AWS)
-    const wordCount = text.trim().split(/\s+/).length;
+    const wordCount = text
+      ? text.split(/\s+/).filter(Boolean).length
+      : 0;
 
-    let isHandwritten = false;
-
-    if (!text || wordCount < 30) {
-      isHandwritten = true;
-    }
+    // Text bahut kam mila to scanned/image PDF ho sakti hai.
+    const isScanned = wordCount < 30;
 
     return {
       text,
-      isHandwritten
+      isScanned,
+      wordCount
     };
-
   } catch (err) {
-    console.log(err);
+    console.error("PDF extraction error:", err.message);
+
     return {
       text: "",
-      isHandwritten: true
+      isScanned: false,
+      wordCount: 0,
+      error: err.message
     };
   }
 };
