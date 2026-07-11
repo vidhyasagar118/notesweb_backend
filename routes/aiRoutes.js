@@ -49,9 +49,11 @@ router.post("/ask-from-pdf", async (req, res) => {
 
 const result = await extractPDFText(fileUrl);
 
-if (result.isHandwritten) {
+
+if (result.isScanned) {
   return res.json({
-    answer: "PDF is handwritten, so I am unable to answer ✍️"
+    answer:
+      "This PDF contains scanned images  or handwritten, so I am unable to answer ✍️. OCR support is required to read it."
   });
 }
 
