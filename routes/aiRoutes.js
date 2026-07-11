@@ -230,48 +230,50 @@ if (fileUrl) {
     });
   }
 }
+pdfText = pdfData.text.slice(0, 10000);
 
- pdfText = pdfData.text.slice(0, 3000);
-    const decision = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
-      messages: [
-        {
-          role: "system",
-          content: `
-You are a strict AI classifier.
+   const decision = await groq.chat.completions.create({
+  model: "llama-3.1-8b-instant",
+  messages: [
+    {
+      role: "system",
+      content: `
+You are an AI router.
+
+Your job is to decide where the answer should come from.
 
 Rules:
 
-1. If question is clearly from PDF → reply "PDF"
-2. If question is about:
-   - website
-   - site
-   - app
-   - platform
-   - features
-   - general knowledge
-   → reply "GLOBAL"
+1. Reply PDF ONLY when user is asking about uploaded PDF content.
 
-3. If unsure → ALWAYS reply "GLOBAL"
+Examples:
+- Explain this chapter
+- What is written in this document?
+- According to this PDF explain...
 
-4. Do NOT guess
+2. Reply GLOBAL for:
+- websites
+- apps
+- companies
+- programming questions not related to PDF
+- general knowledge
+- anything not clearly from PDF
 
-Output only one word:
+3. If unsure, always reply GLOBAL.
+
+Output only:
 PDF or GLOBAL
 `
-        },
-        {
-          role: "user",
-          content: `
-Question: ${question}
-
-PDF Content:
-${pdfText}
+    },
+    {
+      role: "user",
+      content: `
+Question:
+${question}
 `
-        }
-      ]
-    });
-
+    }
+  ]
+});
     const type = decision.choices[0].message.content.trim();
 
     // 🔥 CASE 1: PDF
