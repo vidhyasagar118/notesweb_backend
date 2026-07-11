@@ -32,25 +32,60 @@ router.post("/register", async (req, res) => {
 
     res.json({ message: "Registered" });
 });
-
 router.post("/login", async (req, res) => {
-
-    console.time("LOGIN");
-
+  try {
     const { name, password } = req.body;
+
+    if (!name || !password) {
+      return res.status(400).json({
+        message: "Name and password are required"
+      });
+    }
 
     const user = await User.findOne({ name });
 
-    const match = await bcrypt.compare(password, user.password);
+    if (!user) {
+      return res.status(401).json({
+        message: "Invalid name or password"
+      });
+    }
 
-    const token = jwt.sign(
-        { id: user._id, name: user.name },
-        process.env.JWT_SECRET,
-        { expiresIn: "7d" }
+    const match = await bcrypt.compare(
+      password,
+      user.password
     );
 
-    res.json({ token, user });
+    if (!match) {
+      return res.status(401).json({
+        message: "Invalid name or password"
+      });
+    }
 
-    console.timeEnd("LOGIN");
+    const token = jwt.sign(
+      {
+        id: user._id,
+        name: user.name
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "7d"
+      }
+    );
+
+    res.json({
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        groupCode: user.groupCode
+      }
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+
+    res.status(500).json({
+      message: "Login failed"
+    });
+  }
 });
 module.exports = router;
