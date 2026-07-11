@@ -231,7 +231,7 @@ if (fileUrl) {
   }
 }
 
-let pdfText = pdfData.text.slice(0, 3000);
+ pdfText = pdfData.text.slice(0, 3000);
     const decision = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
       messages: [
