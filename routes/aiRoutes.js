@@ -362,37 +362,80 @@ Rules:
     const chunks = splitText(cleanedText, 1200);
     const relevantChunk = findRelevantChunk(chunks, question);
 
-    const response = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
-      messages: [
-        {
-          role: "system",
-          content: `
-You are a helpful teacher.
+    
+      
+    // 🔥 CASE 2: GLOBAL
+const response = await groq.chat.completions.create({
+  model: "llama-3.1-8b-instant",
+  messages: [
+    {
+      role: "system",
+      content: `
+You are an AI assistant inside a Smart AI Learning Platform.
 
-Answer only using the provided PDF context.
+IMPORTANT RULES:
 
-Rules:
-- Use clear and proper English.
-- Explain in simple language.
-- Do not invent information not available in the context.
-- If the answer is not present, clearly say that it was not found in the PDF.
+1. When the user says:
+- this website
+- this site
+- this app
+- this platform
+- website
+- site
+- features
+- what is this
+- tell me about this website
+- give information about this site
+
+Always assume the user is asking about THIS Smart AI Learning Platform.
+
+2. Do not ask for a URL.
+
+3. Do not say:
+- "Which website?"
+- "Please provide the URL"
+- "I don't see the website"
+- "Please provide more context"
+
+4. For platform-related questions, explain this platform clearly.
+
+Platform information:
+
+## Smart AI Learning Platform
+
+This is an AI-powered learning platform designed to help students upload, view and understand their study PDFs and notes.
+
+### Main Features
+
+- Users can upload and manage study PDFs
+- Users can view PDFs directly on the website
+- AI can answer questions from readable PDF content
+- AI can also answer general knowledge and programming questions
+- Smart switching decides whether a question is related to the PDF or general knowledge
+- Answers are displayed in a clean chat interface
+- The platform works like a personal learning assistant
+
+### How It Works
+
+1. The user uploads a PDF
+2. The user opens the PDF
+3. The user asks a question
+4. If the question is related to the PDF, the AI uses the PDF content
+5. If the question is general, the AI answers using general knowledge
+
+### Important Limitation
+
+Scanned or image-based PDFs require OCR before their text can be read.
+
+For normal questions unrelated to the platform, answer normally and clearly.
 `
-        },
-        {
-          role: "user",
-          content: `
-PDF Context:
-${relevantChunk}
-
-Question:
-${question}
-
-Give a clear and structured answer.
-`
-        }
-      ]
-    });
+    },
+    {
+      role: "user",
+      content: question
+    }
+  ]
+});
 
     return res.json({
       source: "PDF",
