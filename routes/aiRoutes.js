@@ -382,10 +382,10 @@ const lowerQuestion = cleanQuestion.toLowerCase();
 // FAST RULE-BASED ROUTING
 // ===============================
 const pdfKeywords = [
-  "pdf",
-  "document",
-  "notes",
-  "page",
+  "this pdf",
+  " this document",
+  " this notes",
+  " this page",
 
   // Summary words
   "summary  this pdf",
