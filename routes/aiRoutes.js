@@ -375,109 +375,104 @@ router.post("/smart-ask", async (req, res) => {
       });
     }
 
-    const cleanQuestion = question.trim();
+   const cleanQuestion = question.trim();
+const lowerQuestion = cleanQuestion.toLowerCase();
 
-    // =================================================
-    // STEP 1: DECIDE PDF OR GLOBAL
-    // =================================================
-    const decision = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
-      temperature: 0,
-      messages: [
-        {
-          role: "system",
-          content: `
+// ===============================
+// FAST RULE-BASED ROUTING
+// ===============================
+const pdfKeywords = [
+  "pdf",
+  "document",
+  "notes",
+  "page",
+
+  // Summary words
+  "summary  this pdf",
+  "summaries this ",
+  "summarize this  ",
+  "summarise  pdf",
+
+  // Common typing mistakes
+  "summires this pdf ",
+  "summries pdf",
+  "summarise this pdf",
+  "summarize this pdf",
+
+
+  "what is written",
+  "what does this pdf say",
+  "what is this pdf about",
+  "describe this pdf",
+  "explain this pdf",
+  "explain this document"
+];
+
+const websiteKeywords = [
+  "this website",
+  "this weebsite",
+  "this site",
+  "this app",
+  "this platform",
+  "about this website",
+  "about this site",
+  "website features",
+  "site features",
+  "features of this website",
+  "tell me about this website",
+  "and anything"
+];
+
+let type = null;
+
+// Force PDF
+if (pdfKeywords.some(k => lowerQuestion.includes(k))) {
+  type = "PDF";
+}
+
+// Force NotesWeb
+else if (websiteKeywords.some(k => lowerQuestion.includes(k))) {
+  type = "GLOBAL";
+}
+
+// Otherwise ask Groq
+else {
+
+const decision = await groq.chat.completions.create({
+  model: "llama-3.1-8b-instant",
+  temperature: 0,
+  messages: [
+    {
+      role: "system",
+      content: `
 You are an AI request router.
 
-Your job is to decide whether the user's question requires information from the currently opened PDF or should be answered using general knowledge.
-
-Reply PDF only when the user clearly refers to:
-
-- this PDF
-- the PDF
-- this document
-- the document
-- these notes
-- this chapter
-- this notice
-- this file
-- information inside the PDF
-- a table, date, topic, subject, paragraph or content from the opened document
-
-Reply GLOBAL when the question is about:
-
-- this website
-- this weebsite
-- this site
-- this app
-- this platform
-- website
-- site
-- app
-- platform
-- features
-- NotesWeb
-- general knowledge
-- programming
-- development
-- web development
-- websites
-- apps
-- companies
-- technology
-- anything not clearly related to the PDF
-
-Examples:
-
-Question: Give me information about this PDF.
-Answer: PDF
-
-Question: What is written in this document?
-Answer: PDF
-
-Question: Explain the notice in this PDF.
-Answer: PDF
-
-Question: Give me information about development.
-Answer: GLOBAL
-
-Question: Give me information about this website.
-Answer: GLOBAL
-
-Question: Give me information about this weebsite.
-Answer: GLOBAL
-
-Question: This website.
-Answer: GLOBAL
-
-Question: Website.
-Answer: GLOBAL
-
-Question: Explain React.
-Answer: GLOBAL
-
-If you are unsure, always reply GLOBAL.
-
-Return only one word:
+Reply only:
 
 PDF
 
 or
 
 GLOBAL
+
+Reply PDF only if the user is asking about the uploaded PDF.
+
+Otherwise reply GLOBAL.
 `
-        },
-        {
-          role: "user",
-          content: cleanQuestion
-        }
-      ]
-    });
+    },
+    {
+      role: "user",
+      content: cleanQuestion
+    }
+  ]
+});
 
-    const rawType =
-      decision.choices?.[0]?.message?.content;
+type = normalizeRouteType(
+  decision.choices?.[0]?.message?.content
+);
 
-    const type = normalizeRouteType(rawType);
+}
+   
 
     console.log("=================================");
     console.log("QUESTION:", cleanQuestion);
