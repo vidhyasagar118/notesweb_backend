@@ -8,27 +8,114 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-// ✅ SPLIT TEXT
-function splitText(text, chunkSize = 1000) {
+// =====================================================
+// PLATFORM INFORMATION
+// =====================================================
+const PLATFORM_INFO = `
+You are the official AI assistant of NotesWeb.
+
+The user is already using the NotesWeb website.
+
+IMPORTANT RULES:
+
+Whenever the user says:
+
+- this website
+- this weebsite
+- this site
+- this app
+- this platform
+- our website
+- website
+- site
+- app
+- platform
+- features
+- what is this website
+- tell me about this website
+- give me information about this site
+
+Always assume the user is asking about NotesWeb.
+
+Never ask:
+
+- Which website?
+- Which site?
+- Please provide the URL.
+- Please provide the website name.
+- What website are you referring to?
+- Please provide more context.
+
+Instead, directly explain NotesWeb.
+
+NotesWeb is an AI-powered learning platform designed for students.
+
+Main features of NotesWeb:
+
+- Students can upload PDFs and study notes.
+- Students can organize notes semester-wise and subject-wise.
+- Students can view PDFs directly inside the website.
+- Students can ask questions from readable PDFs.
+- Students can ask general knowledge and programming questions.
+- Smart AI routing decides whether the question is related to the PDF or general knowledge.
+- Answers are displayed in a clean AI chat interface.
+- The AI works like a personal learning assistant.
+- Users can manage, download and delete uploaded study files.
+
+How NotesWeb works:
+
+1. The user uploads a PDF.
+2. The user opens the PDF.
+3. The user asks a question.
+4. If the question is about the opened PDF, the AI answers using PDF content.
+5. If the question is general, the AI answers using general knowledge.
+
+Important limitation:
+
+Scanned or image-based PDFs require OCR because normal PDF text extraction cannot read images.
+
+For questions unrelated to NotesWeb, answer normally using clear and helpful English.
+`;
+
+// =====================================================
+// SPLIT PDF TEXT INTO CHUNKS
+// =====================================================
+function splitText(text, chunkSize = 1200) {
   const chunks = [];
+
+  if (!text) {
+    return chunks;
+  }
+
   for (let i = 0; i < text.length; i += chunkSize) {
     chunks.push(text.slice(i, i + chunkSize));
   }
+
   return chunks;
 }
 
-// ✅ FIND BEST CHUNK
+// =====================================================
+// FIND MOST RELEVANT PDF CHUNK
+// =====================================================
 function findRelevantChunk(chunks, question) {
-  const words = question.toLowerCase().split(" ");
+  if (!Array.isArray(chunks) || chunks.length === 0) {
+    return "";
+  }
+
+  const words = question
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((word) => word.length > 2);
 
   let bestChunk = chunks[0];
   let maxScore = 0;
 
   for (const chunk of chunks) {
     let score = 0;
+    const lowerChunk = chunk.toLowerCase();
 
     for (const word of words) {
-      if (chunk.toLowerCase().includes(word)) {
+      if (lowerChunk.includes(word)) {
         score++;
       }
     }
@@ -42,178 +129,161 @@ function findRelevantChunk(chunks, question) {
   return bestChunk;
 }
 
-// 🔥 MAIN ROUTE
+// =====================================================
+// NORMALIZE ROUTER RESPONSE
+// =====================================================
+function normalizeRouteType(value) {
+  const type = String(value || "")
+    .trim()
+    .toUpperCase();
+
+  return type === "PDF" ? "PDF" : "GLOBAL";
+}
+
+// =====================================================
+// ASK DIRECTLY FROM PDF
+// Optional route
+// =====================================================
 router.post("/ask-from-pdf", async (req, res) => {
   try {
     const { fileUrl, question } = req.body;
 
-const result = await extractPDFText(fileUrl);
-
-
-if (result.isScanned) {
-  return res.json({
-    answer:
-      "This PDF contains scanned images  or handwritten, so I am unable to answer ✍️. OCR support is required to read it."
-  });
-}
-
-const text = result.text;
-
-    if (!text || text.trim().length === 0) {
-      return res.json({
-        answer: "No readable content found in PDF 😕"
+    if (!question || !question.trim()) {
+      return res.status(400).json({
+        answer: "Please enter a question."
       });
     }
 
-    const cleanedText = text.replace(/\s+/g, " ");
+    if (!fileUrl) {
+      return res.status(400).json({
+        answer: "Please open a PDF before asking a PDF question."
+      });
+    }
 
-    const chunks = splitText(cleanedText, 1200);
+    const result = await extractPDFText(fileUrl);
 
+    if (result.error) {
+      return res.json({
+        answer: "I could not read this PDF. Please upload it again."
+      });
+    }
+
+    if (result.isScanned || !result.text || !result.text.trim()) {
+      return res.json({
+        answer:
+          "This PDF contains scanned images instead of selectable text. OCR support is required to read it."
+      });
+    }
+
+    const cleanedText = result.text
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const chunks = splitText(cleanedText);
     const relevantChunk = findRelevantChunk(chunks, question);
 
     const response = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
+      temperature: 0.3,
       messages: [
         {
           role: "system",
           content: `
-You are a professional computer science teacher.
+You are a professional teacher.
+
+Answer only using the provided PDF context.
 
 Rules:
-- Answer in clear and proper English
-- Use simple language
-- Explain concepts step by step
-- Do NOT use Hinglish or mixed language
-- Improve the wording if the PDF text is messy
-- Keep the answer clean and well-structured
-`},{
-  role: "user",
-  content: `
-Context:
-${relevantChunk}
 
-Question:
-${question}
-
-Give answer in this format:
-
-1. Proper Heading
-2. Short Definition
-3. Transition Table (in table format)
-5. Simple ASCII Diagram
-6. Use proper spacing and line breaks
-7. Keep it clean and readable
-`
-}
-      ]
-    });
-
-    res.json({
-      answer: response.choices[0].message.content
-    });
-
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ message: "AI error" });
-  }
-});
-
-// 🌍 GLOBAL AI
-router.post("/global-ask", async (req, res) => {
-  try {
-    const { question } = req.body;
-
-    const response = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
-      messages: [
-        {
-          role: "system",
-         content: `
-You are an AI assistant inside a Smart AI Learning Platform.
-
-Your job is to help users understand and use this platform effectively.
-
-IMPORTANT RULES:
-
-* Do NOT ask for any website URL
-* Always assume the user is talking about THIS platform
-* If user asks about "this site", "this app", "features", "what is this", etc → show full platform introduction
-* Answer clearly, confidently, and in an attractive way
-* Do not ask unnecessary questions
-
----
-
-IF USER ASKS ABOUT THE PLATFORM, REPLY LIKE THIS:
-
-## 🚀 Welcome to Your Smart AI Learning Platform
-
-This platform is designed to make learning faster, easier, and smarter using AI.
-
-### 📄 Upload & Learn from Notes
-
-You can upload your study notes or PDFs, and the AI will instantly understand the content. Instead of reading everything manually, just ask questions and get clear answers directly from your notes.
-
-### 🤖 AI-Powered Answers
-
-Our intelligent AI can:
-
-* Answer questions from your uploaded PDFs
-* Explain complex topics in simple language
-* Provide structured and well-formatted answers
-
-### 🧠 Smart Switching (Best Feature)
-
-The AI automatically decides:
-
-* If your question is from your notes → answers from PDF
-* If it's general → answers using global knowledge
-
-So you always get the most relevant answer without doing anything extra.
-
-### ✨ Key Features
-
-* 📌 Clean and easy-to-use interface
-* 📌 Fast and accurate answers
-* 📌 Supports detailed explanations with examples
-* 📌 Works like a personal teacher
-
-### 📖 How to Use
-
-1. Upload your PDF or notes
-2. Ask any question related to your content
-3. Get instant, clear, and structured answers
-
-### 🎯 Why Use This Platform?
-
-* Saves time ⏳
-* Improves understanding 📚
-* No need to search manually 🔍
-* Learn smarter, not harder 💡
-
----
-
-FOR NORMAL QUESTIONS:
-
-* Answer normally (PDF or general)
-* Keep answers clean and helpful
-
+- Use clear and proper English.
+- Use simple language.
+- Explain the answer step by step when needed.
+- Keep the answer clean and structured.
+- Do not invent information.
+- If the answer is not available in the PDF context, clearly say that it was not found in the PDF.
 `
         },
         {
           role: "user",
-          content: question
+          content: `
+PDF Context:
+
+${relevantChunk}
+
+Question:
+
+${question.trim()}
+
+Give a clear and structured answer.
+`
         }
       ]
     });
 
-    res.json({
-      answer: response.choices[0].message.content
+    return res.json({
+      source: "PDF",
+      answer:
+        response.choices?.[0]?.message?.content ||
+        "Unable to generate an answer."
     });
-
   } catch (err) {
-    res.status(500).json({ message: "AI error" });
+    console.error("Ask from PDF error:", err);
+
+    return res.status(500).json({
+      answer: "AI service error. Please try again."
+    });
   }
 });
+
+// =====================================================
+// GLOBAL AI
+// Used when no PDF is open
+// =====================================================
+router.post("/global-ask", async (req, res) => {
+  try {
+    const { question } = req.body;
+
+    if (!question || !question.trim()) {
+      return res.status(400).json({
+        answer: "Please enter a question."
+      });
+    }
+
+    const response = await groq.chat.completions.create({
+      model: "llama-3.1-8b-instant",
+      temperature: 0.4,
+      messages: [
+        {
+          role: "system",
+          content: PLATFORM_INFO
+        },
+        {
+          role: "user",
+          content: question.trim()
+        }
+      ]
+    });
+
+    return res.json({
+      source: "GLOBAL",
+      answer:
+        response.choices?.[0]?.message?.content ||
+        "Unable to generate an answer."
+    });
+  } catch (err) {
+    console.error("Global AI error:", err);
+
+    return res.status(500).json({
+      answer: "AI service error. Please try again."
+    });
+  }
+});
+
+// =====================================================
+// SMART AI
+// Used when PDF is open
+// First decides PDF or GLOBAL
+// =====================================================
 router.post("/smart-ask", async (req, res) => {
   try {
     const { fileUrl, question } = req.body;
@@ -224,10 +294,11 @@ router.post("/smart-ask", async (req, res) => {
       });
     }
 
-    // ============================
-    // STEP 1: PEHLE DECIDE KARO
-    // PDF question hai ya GLOBAL
-    // ============================
+    const cleanQuestion = question.trim();
+
+    // =================================================
+    // STEP 1: DECIDE PDF OR GLOBAL
+    // =================================================
     const decision = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
       temperature: 0,
@@ -237,86 +308,117 @@ router.post("/smart-ask", async (req, res) => {
           content: `
 You are an AI request router.
 
-Decide whether the user's question requires information from the currently opened PDF.
+Your job is to decide whether the user's question requires information from the currently opened PDF or should be answered using general knowledge.
 
-Reply PDF only when the question clearly refers to:
+Reply PDF only when the user clearly refers to:
+
 - this PDF
+- the PDF
 - this document
+- the document
 - these notes
 - this chapter
-- content, table, topic, date, notice or information inside the uploaded document
+- this notice
+- this file
+- information inside the PDF
+- a table, date, topic, subject, paragraph or content from the opened document
 
-Reply GLOBAL when the question is:
+Reply GLOBAL when the question is about:
+
+- this website
+- this weebsite
+- this site
+- this app
+- this platform
+- website
+- site
+- app
+- platform
+- features
+- NotesWeb
 - general knowledge
-- about development
-- about programming
-- about websites, apps, companies or technology
-- not clearly related to the opened PDF
+- programming
+- development
+- web development
+- websites
+- apps
+- companies
+- technology
+- anything not clearly related to the PDF
 
 Examples:
 
-Question: What is written in this PDF?
+Question: Give me information about this PDF.
 Answer: PDF
 
-Question: Explain the second chapter from these notes.
+Question: What is written in this document?
 Answer: PDF
 
-Question: Give me proper information about development.
+Question: Explain the notice in this PDF.
+Answer: PDF
+
+Question: Give me information about development.
 Answer: GLOBAL
 
-Question: What is web development?
+Question: Give me information about this website.
+Answer: GLOBAL
+
+Question: Give me information about this weebsite.
+Answer: GLOBAL
+
+Question: This website.
+Answer: GLOBAL
+
+Question: Website.
 Answer: GLOBAL
 
 Question: Explain React.
 Answer: GLOBAL
 
-If unsure, reply GLOBAL.
+If you are unsure, always reply GLOBAL.
 
 Return only one word:
+
 PDF
+
 or
+
 GLOBAL
 `
         },
         {
           role: "user",
-          content: question.trim()
+          content: cleanQuestion
         }
       ]
     });
 
     const rawType =
-      decision.choices?.[0]?.message?.content?.trim().toUpperCase() || "";
+      decision.choices?.[0]?.message?.content;
 
-    const type = rawType === "PDF" ? "PDF" : "GLOBAL";
+    const type = normalizeRouteType(rawType);
 
+    console.log("=================================");
+    console.log("QUESTION:", cleanQuestion);
     console.log("AI ROUTE TYPE:", type);
-    console.log("QUESTION:", question);
+    console.log("=================================");
 
-    // ============================
+    // =================================================
     // CASE 1: GLOBAL QUESTION
-    // PDF KO EXTRACT HI MAT KARO
-    // ============================
+    // Do not extract PDF
+    // =================================================
     if (type === "GLOBAL") {
       const response = await groq.chat.completions.create({
         model: "llama-3.1-8b-instant",
+        temperature: 0.4,
         messages: [
           {
             role: "system",
-            content: `
-You are a smart and helpful AI assistant.
-
-Rules:
-- Answer the user's general question directly.
-- Use clear and proper English.
-- Explain step by step when needed.
-- Keep the response clean and well structured.
-- Do not force the answer to relate to the opened PDF.
-`
+            content: PLATFORM_INFO
           },
           {
             role: "user",
-            content: question.trim()
+            content: cleanQuestion
           }
         ]
       });
@@ -329,10 +431,10 @@ Rules:
       });
     }
 
-    // ============================
+    // =================================================
     // CASE 2: PDF QUESTION
-    // AB PDF EXTRACT KARO
-    // ============================
+    // Only now extract PDF
+    // =================================================
     if (!fileUrl) {
       return res.json({
         source: "PDF",
@@ -345,97 +447,79 @@ Rules:
     if (pdfData.error) {
       return res.json({
         source: "PDF",
-        answer: "I could not read this PDF. Please try uploading it again."
+        answer:
+          "I could not read this PDF. Please upload the PDF again and try."
       });
     }
 
-    if (pdfData.isScanned || !pdfData.text) {
+    if (
+      pdfData.isScanned ||
+      !pdfData.text ||
+      !pdfData.text.trim()
+    ) {
       return res.json({
         source: "PDF",
         answer:
-          "This PDF appears to contain scanned images instead of selectable text. OCR support is required to read it."
+          "This PDF contains scanned images instead of selectable text. OCR support is required to read it."
       });
     }
 
-    const cleanedText = pdfData.text.replace(/\s+/g, " ").trim();
+    const cleanedText = pdfData.text
+      .replace(/\s+/g, " ")
+      .trim();
 
     const chunks = splitText(cleanedText, 1200);
-    const relevantChunk = findRelevantChunk(chunks, question);
 
-    
-      
-    // 🔥 CASE 2: GLOBAL
-const response = await groq.chat.completions.create({
-  model: "llama-3.1-8b-instant",
-  messages: [
-    {
-      role: "system",
-      content: `
-You are an AI assistant inside a Smart AI Learning Platform.
-
-IMPORTANT RULES:
-
-1. When the user says:
-- this website
-- this site
-- this app
-- this platform
-- website
-- site
-- features
-- what is this
-- tell me about this website
-- give information about this site
-
-Always assume the user is asking about THIS Smart AI Learning Platform.
-
-2. Do not ask for a URL.
-
-3. Do not say:
-- "Which website?"
-- "Please provide the URL"
-- "I don't see the website"
-- "Please provide more context"
-
-4. For platform-related questions, explain this platform clearly.
-
-Platform information:
-
-## Smart AI Learning Platform
-
-This is an AI-powered learning platform designed to help students upload, view and understand their study PDFs and notes.
-
-### Main Features
-
-- Users can upload and manage study PDFs
-- Users can view PDFs directly on the website
-- AI can answer questions from readable PDF content
-- AI can also answer general knowledge and programming questions
-- Smart switching decides whether a question is related to the PDF or general knowledge
-- Answers are displayed in a clean chat interface
-- The platform works like a personal learning assistant
-
-### How It Works
-
-1. The user uploads a PDF
-2. The user opens the PDF
-3. The user asks a question
-4. If the question is related to the PDF, the AI uses the PDF content
-5. If the question is general, the AI answers using general knowledge
-
-### Important Limitation
-
-Scanned or image-based PDFs require OCR before their text can be read.
-
-For normal questions unrelated to the platform, answer normally and clearly.
-`
-    },
-    {
-      role: "user",
-      content: question
+    if (chunks.length === 0) {
+      return res.json({
+        source: "PDF",
+        answer: "No readable content was found in this PDF."
+      });
     }
-  ]
-});
+
+    const relevantChunk = findRelevantChunk(
+      chunks,
+      cleanQuestion
+    );
+
+    const response = await groq.chat.completions.create({
+      model: "llama-3.1-8b-instant",
+      temperature: 0.3,
+      messages: [
+        {
+          role: "system",
+          content: `
+You are a helpful professional teacher.
+
+Answer only using the provided PDF context.
+
+Rules:
+
+- Use clear and proper English.
+- Use simple and understandable language.
+- Explain step by step when necessary.
+- Keep the answer clean and structured.
+- Do not invent information.
+- Do not use unrelated general knowledge.
+- If the answer is not available in the provided PDF context, clearly say that it was not found in the PDF.
+`
+        },
+        {
+          role: "user",
+          content: `
+PDF Context:
+
+${relevantChunk}
+
+Question:
+
+${cleanQuestion}
+
+Give a clear and structured answer.
+`
+        }
+      ]
+    });
 
     return res.json({
       source: "PDF",
@@ -451,4 +535,5 @@ For normal questions unrelated to the platform, answer normally and clearly.
     });
   }
 });
+
 module.exports = router;
