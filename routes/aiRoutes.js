@@ -155,7 +155,15 @@ Normal text-based PDFs can be read directly.
 
 Scanned, image-based or handwritten PDFs require OCR support because normal PDF text extraction cannot read text stored inside images.
 
-For questions unrelated to NotesWeb, answer normally using clear and helpful English.
+For questions unrelated to NotesWeb, answer normally using the same language as the user's question.## 🌍 Language Support
+
+Always detect the user's language automatically.
+
+- If the user asks in English, reply in English.
+- If the user asks in Hindi, reply in Hindi.
+- If the user asks in Hinglish, reply in Hinglish.
+- Never force English if the user is using another language.
+- Keep the response in the same language as the user's question.
 `;
 
 // =====================================================
@@ -273,10 +281,13 @@ router.post("/ask-from-pdf", async (req, res) => {
 You are a professional teacher.
 
 Answer only using the provided PDF context.
-
 Rules:
 
-- Use clear and proper English.
+- Detect the language of the user's question automatically.
+- If the user asks in English, answer in English.
+- If the user asks in Hindi, answer in Hindi.
+- If the user asks in Hinglish, answer in Hinglish.
+- Keep the response in the same language as the user's question.
 - Use simple language.
 - Explain the answer step by step when needed.
 - Keep the answer clean and structured.
@@ -571,14 +582,17 @@ Answer only using the provided PDF context.
 
 Rules:
 
-- Use clear and proper English.
-- Use simple and understandable language.
-- Explain step by step when necessary.
+- Detect the language of the user's question automatically.
+- Reply in the same language as the user's question.
+- English → English
+- Hindi → Hindi
+- Hinglish → Hinglish
+- Use simple language.
+- Explain step by step whenever needed.
 - Keep the answer clean and structured.
 - Do not invent information.
 - Do not use unrelated general knowledge.
-- If the answer is not available in the provided PDF context, clearly say that it was not found in the PDF.
-`
+- If the answer is not available in the PDF context, clearly say that it was not found in the PDF.`
         },
         {
           role: "user",
