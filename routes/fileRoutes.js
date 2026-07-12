@@ -68,43 +68,58 @@ limits: {
 });
 
 // ================= UPLOAD =================
-
 router.post("/upload", auth, upload.array("files", 20), async (req, res) => {
-    try {
-        if (!req.files || req.files.length === 0) {
-            return res.status(400).json({ message: "No files uploaded" });
-        }
-
-        const savedFiles = [];
-
-for (const file of req.files) {
-
-const fileStream = fs.createReadStream(file.path);
- const key =
-        `${req.user.id}/${req.body.subject}/${Date.now()}-${file.originalname}`;
-
-await s3.send(
-  new PutObjectCommand({
-    Bucket: process.env.AWS_BUCKET_NAME,
-    Key: key,
-    Body: fileStream,
-    ContentType: file.mimetype
-  })
-);
-   
-
-
-    if (fs.existsSync(file.path)) {
-        fs.unlinkSync(file.path);
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        message: "No files uploaded"
+      });
     }
 
-    const fileUrl =
+    const subject = req.body.subject?.trim();
+    const semester = req.body.semester?.trim();
+
+    if (!subject || !semester) {
+      return res.status(400).json({
+        message: "Semester and subject are required"
+      });
+    }
+
+    const visibility =
+      req.body.visibility === "private"
+        ? "private"
+        : "public";
+
+    const savedFiles = [];
+
+    for (const file of req.files) {
+      const fileStream = fs.createReadStream(file.path);
+
+      const safeFilename = `${Date.now()}-${file.originalname}`;
+
+      const key =
+        `${req.user.id}/${subject}/${safeFilename}`;
+
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: process.env.AWS_BUCKET_NAME,
+          Key: key,
+          Body: fileStream,
+          ContentType: file.mimetype
+        })
+      );
+
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+
+      const fileUrl =
         `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
 
-    const newFile = await File.create({
+      const newFile = await File.create({
         userId: req.user.id,
-        subject: req.body.subject,
-        semester: req.body.semester,
+        subject,
+        semester,
         filename: file.originalname,
 
         fileType: file.mimetype,
@@ -112,31 +127,31 @@ await s3.send(
 
         filepath: fileUrl,
         downloadUrl: fileUrl,
-        publicId: key
-    });
+        publicId: key,
+        visibility
+      });
 
-    savedFiles.push(newFile);
-}
-return res.json(savedFiles);
-
-    } catch (err) {
-        console.log(err);
-
-        if (req.files) {
-            req.files.forEach(file => {
-                if (fs.existsSync(file.path)) {
-                    fs.unlinkSync(file.path);
-                }
-            });
-        }
-
-        res.status(500).json({
-            message: "Upload failed",
-            error: err.message
-        });
+      savedFiles.push(newFile);
     }
-});
 
+    return res.status(201).json(savedFiles);
+  } catch (err) {
+    console.error("Upload error:", err);
+
+    if (req.files) {
+      req.files.forEach((file) => {
+        if (fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+        }
+      });
+    }
+
+    return res.status(500).json({
+      message: "Upload failed",
+      error: err.message
+    });
+  }
+});
 // ================= DELETE =================
 
 router.delete("/:id", auth, async (req, res) => {
@@ -157,7 +172,6 @@ if (
     });
 }
 
-        if (!file) return res.status(404).json({ message: "File not found" });
 
 await s3.send(
     new DeleteObjectCommand({
@@ -192,7 +206,10 @@ router.get("/shared/:groupCode", auth, async (req, res) => {
         }
 
         const files = await File.find({
-            userId: user._id
+            userId: user._id,
+            visibility: {
+    $ne: "private"
+  }
         });
 
         const grouped = {};

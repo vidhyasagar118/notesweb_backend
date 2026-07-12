@@ -20,7 +20,12 @@ const fileSchema = new mongoose.Schema({
   uploadedAt: {
     type: Date,
     default: Date.now
-  }
+  },
+  visibility: {
+  type: String,
+  enum: ["public", "private"],
+  default: "public"
+}
 });
 
 module.exports = mongoose.model("File", fileSchema);
