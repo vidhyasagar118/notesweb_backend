@@ -45,11 +45,10 @@ router.post("/login", async (req, res) => {
     const user = await User.findOne({ name });
 
     if (!user) {
-      return res.status(401).json({
-        message: "Invalid name or password"
-      });
-    }
-
+  return res.status(404).json({
+    message: "Account not found. Please create your account first (Pehle account create karein)."
+  });
+}
     const match = await bcrypt.compare(
       password,
       user.password
