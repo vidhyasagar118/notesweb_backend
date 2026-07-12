@@ -40,7 +40,7 @@ limits: {
 
   fileFilter: (req, file, cb) => {
 
-    const allowedTypes = [
+   const allowedTypes = [
   // PDF
   "application/pdf",
 
@@ -49,18 +49,34 @@ limits: {
   "video/x-msvideo",
   "video/x-matroska",
   "video/quicktime",
+  "video/webm",
 
   // Images
   "image/jpeg",
   "image/png",
   "image/webp",
-  "image/gif"
-];
+  "image/gif",
 
+  // Audio / Music
+  "audio/m4a",
+"audio/x-aac",
+  "audio/mpeg",       // MP3
+  "audio/mp3",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/mp4",        // M4A
+  "audio/x-m4a",
+  "audio/ogg",
+  "audio/aac",
+  "audio/flac",
+  "audio/x-flac",
+];
     if (!allowedTypes.includes(file.mimetype)) {
-        return cb(
-            new Error("Only PDF and Video  images files allowed")
-        );
+      return cb(
+  new Error(
+    "Only PDF, image, video and audio files are allowed"
+  )
+);
     }
 
     cb(null, true);

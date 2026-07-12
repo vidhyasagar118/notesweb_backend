@@ -9,6 +9,217 @@ const groq = new Groq({
 });
 
 // =====================================================
+// DETECT FILE CATEGORY
+// =====================================================
+function detectFileCategory({
+  fileCategory,
+  mimeType,
+  fileName,
+  originalName,
+  fileUrl,
+}) {
+  const suppliedCategory = String(
+    fileCategory || ""
+  )
+    .trim()
+    .toLowerCase();
+
+  if (
+    ["pdf", "image", "video", "audio"].includes(
+      suppliedCategory
+    )
+  ) {
+    return suppliedCategory;
+  }
+
+  const mime = String(
+    mimeType || ""
+  ).toLowerCase();
+
+  const name = String(
+    originalName ||
+      fileName ||
+      fileUrl ||
+      ""
+  ).toLowerCase();
+
+  if (
+    mime === "application/pdf" ||
+    /\.pdf(\?|$)/i.test(name)
+  ) {
+    return "pdf";
+  }
+
+  if (
+    mime.startsWith("image/") ||
+    /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(
+      name
+    )
+  ) {
+    return "image";
+  }
+
+  if (
+    mime.startsWith("video/") ||
+    /\.(mp4|avi|mkv|mov|webm)(\?|$)/i.test(
+      name
+    )
+  ) {
+    return "video";
+  }
+
+  if (
+    mime.startsWith("audio/") ||
+    /\.(mp3|wav|m4a|ogg|aac|flac)(\?|$)/i.test(
+      name
+    )
+  ) {
+    return "audio";
+  }
+
+  return "other";
+}
+// =====================================================
+// IMAGE VISION AI
+// =====================================================
+async function askImageAI(
+  fileUrl,
+  question
+) {
+  const response =
+    await groq.chat.completions.create({
+      model:
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+
+      temperature: 0.2,
+      max_completion_tokens: 1500,
+
+      messages: [
+        {
+          role: "system",
+          content: `
+You are a professional AI image analyzer and teacher.
+
+Carefully inspect the uploaded image.
+
+Rules:
+
+- Read all clearly visible printed text.
+- Read handwriting only when it is clearly visible.
+- Explain diagrams, screenshots, tables, graphs and charts.
+- Reply in the same language as the user's question.
+- Hindi question → Hindi answer.
+- English question → English answer.
+- Hinglish question → Hinglish answer.
+- Do not invent anything that is not visible.
+- If the image is blurry, cropped or unreadable, clearly say so.
+- Give clean and structured answers.
+`,
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: question,
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: fileUrl,
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+  return (
+    response.choices?.[0]?.message
+      ?.content ||
+    "Image ko analyze nahi kar paya."
+  );
+}
+
+// =====================================================
+// VIDEO TRANSCRIPTION
+// =====================================================
+async function transcribeMedia(fileUrl) {
+  const result =
+    await groq.audio.transcriptions.create({
+      url: fileUrl,
+      model: "whisper-large-v3-turbo",
+      response_format: "json",
+      temperature: 0,
+    });
+
+  return result.text || "";
+}
+
+// =====================================================
+// ANSWER FROM VIDEO TRANSCRIPT
+// =====================================================
+async function answerFromVideoTranscript(
+  transcript,
+  question
+) {
+  const chunks = splitText(
+    transcript,
+    6000
+  );
+
+  const relevantChunk =
+    findRelevantChunk(
+      chunks,
+      question
+    );
+
+  const response =
+    await groq.chat.completions.create({
+      model:
+        "llama-3.1-8b-instant",
+
+      temperature: 0.3,
+
+      messages: [
+        {
+          role: "system",
+          content: `
+You are a professional teacher.
+
+The given context is the spoken transcript of an uploaded video.
+
+Rules:
+
+- Answer only using the transcript.
+- Reply in the same language as the user.
+- Do not invent visual information.
+- If the answer is not present in the transcript, clearly say so.
+- Keep the answer clean and structured.
+`,
+        },
+        {
+          role: "user",
+          content: `
+Video transcript:
+
+${relevantChunk}
+
+Question:
+
+${question}
+`,
+        },
+      ],
+    });
+
+  return (
+    response.choices?.[0]?.message
+      ?.content ||
+    "Video transcript se answer generate nahi hua."
+  );
+}
+// =====================================================
 // PLATFORM INFORMATION
 // =====================================================
 const PLATFORM_INFO = `
@@ -376,227 +587,334 @@ router.post("/global-ask", async (req, res) => {
 // Used when PDF is open
 // First decides PDF or GLOBAL
 // =====================================================
-router.post("/smart-ask", async (req, res) => {
-  try {
-    const { fileUrl, question } = req.body;
+router.post(
+  "/smart-ask",
+  async (req, res) => {
+    try {
+      const {
+        fileUrl,
+        fileCategory,
+        mimeType,
+        fileName,
+        originalName,
+        fileSize,
+        question,
+      } = req.body;
 
-    if (!question || !question.trim()) {
-      return res.status(400).json({
-        answer: "Please enter a question."
-      });
-    }
+      if (
+        !question ||
+        !question.trim()
+      ) {
+        return res.status(400).json({
+          answer:
+            "Please enter a question.",
+        });
+      }
 
-   const cleanQuestion = question.trim();
-const lowerQuestion = cleanQuestion.toLowerCase();
+      const cleanQuestion =
+        question.trim();
 
+      const lowerQuestion =
+        cleanQuestion.toLowerCase();
+
+      const category =
+        detectFileCategory({
+          fileCategory,
+          mimeType,
+          fileName,
+          originalName,
+          fileUrl,
+        });
+
+      console.log(
+        "AI category:",
+        category
+      );
+
+      console.log(
+        "AI file:",
+        fileUrl
+      );
+
+      const websiteKeywords = [
+        "this website",
+        "this weebsite",
+        "this site",
+        "this app",
+        "this platform",
+        "notesweb",
+        "website features",
+        "site features",
+      ];
+
+      const isWebsiteQuestion =
+        websiteKeywords.some((keyword) =>
+          lowerQuestion.includes(
+            keyword
+          )
+        );
+
+      if (isWebsiteQuestion) {
+        const response =
+          await groq.chat.completions.create({
+            model:
+              "llama-3.1-8b-instant",
+
+            temperature: 0.4,
+
+            messages: [
+              {
+                role: "system",
+                content:
+                  PLATFORM_INFO,
+              },
+              {
+                role: "user",
+                content:
+                  cleanQuestion,
+              },
+            ],
+          });
+
+        return res.json({
+          source: "GLOBAL",
+          answer:
+            response.choices?.[0]
+              ?.message?.content ||
+            "Unable to generate an answer.",
+        });
+      }
+
+      if (!fileUrl) {
+        const response =
+          await groq.chat.completions.create({
+            model:
+              "llama-3.1-8b-instant",
+
+            temperature: 0.4,
+
+            messages: [
+              {
+                role: "system",
+                content:
+                  PLATFORM_INFO,
+              },
+              {
+                role: "user",
+                content:
+                  cleanQuestion,
+              },
+            ],
+          });
+
+        return res.json({
+          source: "GLOBAL",
+          answer:
+            response.choices?.[0]
+              ?.message?.content ||
+            "Unable to generate an answer.",
+        });
+      }
+
+      // ===============================
+      // IMAGE
+      // ===============================
+
+      if (category === "image") {
+        const sizeInBytes =
+          Number(fileSize || 0);
+
+        const maxImageSize =
+          20 * 1024 * 1024;
+
+        if (
+          sizeInBytes > maxImageSize
+        ) {
+          return res.json({
+            source: "IMAGE",
+            answer:
+              "Image 20 MB se badi hai. AI analysis ke liye image compress karke upload karo.",
+          });
+        }
+
+        const answer =
+          await askImageAI(
+            fileUrl,
+            cleanQuestion
+          );
+
+        return res.json({
+          source: "IMAGE",
+          answer,
+        });
+      }
+
+      // ===============================
+      // VIDEO
+      // ===============================
+
+      if (category === "video") {
+        const supportedVideo =
+          /\.(mp4|webm)(\?|$)/i.test(
+            originalName ||
+              fileName ||
+              fileUrl
+          );
+
+        if (!supportedVideo) {
+          return res.json({
+            source: "VIDEO",
+            answer:
+              "AVI, MKV aur MOV video ko AI directly transcribe nahi kar pa raha. Video ko MP4 ya WebM format me upload karo.",
+          });
+        }
+
+const transcript =
+  await transcribeMedia(fileUrl);
+
+        if (!transcript.trim()) {
+          return res.json({
+            source: "VIDEO",
+            answer:
+              "Video me clear spoken audio nahi mila.",
+          });
+        }
+
+        const answer =
+          await answerFromVideoTranscript(
+            transcript,
+            cleanQuestion
+          );
+
+        return res.json({
+          source: "VIDEO",
+          answer,
+        });
+      }
+      // ===============================
+// AUDIO / MUSIC
 // ===============================
-// FAST RULE-BASED ROUTING
-// ===============================
-const pdfKeywords = [
-  "this pdf",
-  " this document",
-  " this notes",
-  " this page",
 
-  // Summary words
-  "summary  this pdf",
-  "summaries this ",
-  "summarize this  ",
-  "summarise  pdf",
+if (category === "audio") {
+  const supportedAudio =
+    /\.(mp3|wav|m4a|ogg|aac|flac)(\?|$)/i.test(
+      originalName ||
+        fileName ||
+        fileUrl
+    );
 
-  // Common typing mistakes
-  "summires this pdf ",
-  "summries pdf",
-  "summarise this pdf",
-  "summarize this pdf",
+  if (!supportedAudio) {
+    return res.json({
+      source: "AUDIO",
+      answer:
+        "Ye audio format AI transcription ke liye supported nahi hai.",
+    });
+  }
 
+  const transcript =
+    await transcribeMedia(fileUrl);
 
-  "what is written",
-  "what does this pdf say",
-  "what is this pdf about",
-  "describe this pdf",
-  "explain this pdf",
-  "explain this document"
-];
+  if (!transcript.trim()) {
+    return res.json({
+      source: "AUDIO",
+      answer:
+        "Audio me clear speech ya lyrics detect nahi hui.",
+    });
+  }
 
-const websiteKeywords = [
-  "this website",
-  "this weebsite",
-  "this site",
-  "this app",
-  "this platform",
-  "about this website",
-  "about this site",
-  "website features",
-  "site features",
-  "features of this website",
-  "tell me about this website",
-  "and anything"
-];
-
-let type = null;
-
-// Force PDF
-if (pdfKeywords.some(k => lowerQuestion.includes(k))) {
-  type = "PDF";
-}
-
-// Force NotesWeb
-else if (websiteKeywords.some(k => lowerQuestion.includes(k))) {
-  type = "GLOBAL";
-}
-
-// Otherwise ask Groq
-else {
-
-const decision = await groq.chat.completions.create({
-  model: "llama-3.1-8b-instant",
-  temperature: 0,
-  messages: [
-    {
-      role: "system",
-      content: `
-You are an AI request router.
-
-Reply only:
-
-PDF
-
-or
-
-GLOBAL
-
-Reply PDF only if the user is asking about the uploaded PDF.
-
-Otherwise reply GLOBAL.
-`
-    },
-    {
-      role: "user",
-      content: cleanQuestion
-    }
-  ]
-});
-
-type = normalizeRouteType(
-  decision.choices?.[0]?.message?.content
-);
-
-}
-   
-
-    console.log("=================================");
-    console.log("QUESTION:", cleanQuestion);
-    console.log("AI ROUTE TYPE:", type);
-    console.log("=================================");
-
-    // =================================================
-    // CASE 1: GLOBAL QUESTION
-    // Do not extract PDF
-    // =================================================
-    if (type === "GLOBAL") {
-      const response = await groq.chat.completions.create({
-        model: "llama-3.1-8b-instant",
-        temperature: 0.4,
-        messages: [
-          {
-            role: "system",
-            content: PLATFORM_INFO
-          },
-          {
-            role: "user",
-            content: cleanQuestion
-          }
-        ]
-      });
-
-      return res.json({
-        source: "GLOBAL",
-        answer:
-          response.choices?.[0]?.message?.content ||
-          "Unable to generate an answer."
-      });
-    }
-
-    // =================================================
-    // CASE 2: PDF QUESTION
-    // Only now extract PDF
-    // =================================================
-    if (!fileUrl) {
-      return res.json({
-        source: "PDF",
-        answer: "Please open a PDF before asking a question about it."
-      });
-    }
-
-    const pdfData = await extractPDFText(fileUrl);
-
-    if (pdfData.error) {
-      return res.json({
-        source: "PDF",
-        answer:
-          "I could not read this PDF. Please upload the PDF again and try."
-      });
-    }
-
-    if (
-      pdfData.isScanned ||
-      !pdfData.text ||
-      !pdfData.text.trim()
-    ) {
-      return res.json({
-        source: "PDF",
-        answer:
-          "This PDF contains scanned images instead of selectable text. OCR support is required to read it."
-      });
-    }
-
-    const cleanedText = pdfData.text
-      .replace(/\s+/g, " ")
-      .trim();
-
-    const chunks = splitText(cleanedText, 1200);
-
-    if (chunks.length === 0) {
-      return res.json({
-        source: "PDF",
-        answer: "No readable content was found in this PDF."
-      });
-    }
-
-    const relevantChunk = findRelevantChunk(
-      chunks,
+  const answer =
+    await answerFromVideoTranscript(
+      transcript,
       cleanQuestion
     );
 
-    const response = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
-      temperature: 0.3,
-      messages: [
-        {
-          role: "system",
-          content: `
+  return res.json({
+    source: "AUDIO",
+    answer,
+  });
+}
+
+      // ===============================
+      // PDF
+      // ===============================
+
+      if (category === "pdf") {
+        const pdfData =
+          await extractPDFText(
+            fileUrl
+          );
+
+        if (pdfData.error) {
+          return res.json({
+            source: "PDF",
+            answer:
+              "PDF read nahi ho paayi. Please dobara upload karo.",
+          });
+        }
+
+        if (
+          pdfData.isScanned ||
+          !pdfData.text ||
+          !pdfData.text.trim()
+        ) {
+          return res.json({
+            source: "PDF",
+            answer:
+              "Ye scanned ya image-based PDF hai. Iske liye PDF pages ko images me convert karke Vision AI se read karna hoga.",
+          });
+        }
+
+        const cleanedText =
+          pdfData.text
+            .replace(/\s+/g, " ")
+            .trim();
+
+        const chunks = splitText(
+          cleanedText,
+          1200
+        );
+
+        if (chunks.length === 0) {
+          return res.json({
+            source: "PDF",
+            answer:
+              "PDF me readable content nahi mila.",
+          });
+        }
+
+        const relevantChunk =
+          findRelevantChunk(
+            chunks,
+            cleanQuestion
+          );
+
+        const response =
+          await groq.chat.completions.create({
+            model:
+              "llama-3.1-8b-instant",
+
+            temperature: 0.3,
+
+            messages: [
+              {
+                role: "system",
+                content: `
 You are a helpful professional teacher.
 
 Answer only using the provided PDF context.
 
 Rules:
 
-- Detect the language of the user's question automatically.
-- Reply in the same language as the user's question.
-- English → English
-- Hindi → Hindi
-- Hinglish → Hinglish
+- Reply in the same language as the user.
 - Use simple language.
-- Explain step by step whenever needed.
 - Keep the answer clean and structured.
 - Do not invent information.
-- Do not use unrelated general knowledge.
-- If the answer is not available in the PDF context, clearly say that it was not found in the PDF.`
-        },
-        {
-          role: "user",
-          content: `
+- If the answer is not available in the context, say so clearly.
+`,
+              },
+              {
+                role: "user",
+                content: `
 PDF Context:
 
 ${relevantChunk}
@@ -604,26 +922,41 @@ ${relevantChunk}
 Question:
 
 ${cleanQuestion}
+`,
+              },
+            ],
+          });
 
-Give a clear and structured answer.
-`
-        }
-      ]
-    });
+        return res.json({
+          source: "PDF",
+          answer:
+            response.choices?.[0]
+              ?.message?.content ||
+            "Unable to generate an answer.",
+        });
+      }
 
-    return res.json({
-      source: "PDF",
-      answer:
-        response.choices?.[0]?.message?.content ||
-        "Unable to generate an answer."
-    });
-  } catch (err) {
-    console.error("Smart AI error:", err);
+      return res.json({
+        source: "OTHER",
+        answer:
+          "Ye file type AI analysis ke liye supported nahi hai.",
+      });
+    } catch (err) {
+      console.error(
+        "Smart AI error:",
+        err.response?.data ||
+          err.message ||
+          err
+      );
 
-    return res.status(500).json({
-      answer: "AI service error. Please try again."
-    });
+      return res.status(500).json({
+        answer:
+          err.response?.data?.error
+            ?.message ||
+          "AI service error. Please try again.",
+      });
+    }
   }
-});
+);
 
 module.exports = router;
