@@ -2,18 +2,39 @@ const router = require("express").Router();
 const User = require("../models/User");
 const File = require("../models/File");
 
-router.get("/", async (req, res) => {
+let cachedStats = null;
+let cacheTime = 0;
 
-  const totalStudents = await User.countDocuments();
-  const totalNotes = await File.countDocuments();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-  const subjects = await File.distinct("subject");
+router.get("/", async (req, res, next) => {
+  try {
+    const now = Date.now();
 
-  res.json({
-    totalStudents,
-    totalNotes,
-    subjects: subjects.length
-  });
+    // Cached data तुरंत भेजो
+    if (cachedStats && now - cacheTime < CACHE_DURATION) {
+      return res.json(cachedStats);
+    }
+
+    // सभी queries एक साथ चलेंगी
+    const [totalStudents, totalNotes, subjects] = await Promise.all([
+      User.countDocuments({}),
+      File.countDocuments({}),
+      File.distinct("subject")
+    ]);
+
+    cachedStats = {
+      totalStudents,
+      totalNotes,
+      subjects: subjects.filter(Boolean).length
+    };
+
+    cacheTime = now;
+
+    return res.json(cachedStats);
+  } catch (error) {
+    next(error);
+  }
 });
 
 module.exports = router;
